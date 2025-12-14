@@ -4,21 +4,34 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Admin - Atur Kode</title>
+    <!-- Tambahkan Library Auth -->
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script> 
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
     <style>
         body { font-family: sans-serif; background: #f4f6f8; padding: 20px; max-width: 800px; margin: auto; padding-bottom: 60px; }
         .card { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); margin-bottom: 20px; }
-        label { font-weight: bold; display: block; margin-top: 10px; }
+        label { font-weight: bold; display: block; margin-top: 10px; font-size: 14px; color: #555; }
         select, input { width: 100%; padding: 10px; margin-top: 5px; border: 1px solid #ddd; border-radius: 5px; box-sizing: border-box; }
+        
         button { width: 100%; padding: 12px; background: #00695c; color: white; border: none; border-radius: 5px; margin-top: 15px; cursor: pointer; font-weight: bold; }
         button:hover { background: #004d40; }
+        
+        .btn-check { background: #ff9800; color: black; margin-top: 5px; }
+        
         button.back { background: #6c757d; width: auto; margin-bottom: 10px;}
         table { width: 100%; border-collapse: collapse; margin-top: 15px; }
         th, td { padding: 10px; border-bottom: 1px solid #eee; text-align: left; }
         th { background: #e0f2f1; color: #00695c;}
         .badge { background: #ffab00; color: #000; padding: 2px 8px; border-radius: 10px; font-size: 12px; font-weight: bold; }
-
+        
+        /* Area Pesan Error */
+        #debugLog { 
+            background: #212121; color: #00e676; 
+            padding: 10px; margin-top: 10px; 
+            border-radius: 5px; font-family: monospace; font-size: 12px;
+            display: none;
+        }
         .running-footer {
             position: fixed; bottom: 0; left: 0; width: 100%;
             background: #004d40; color: #fff;
@@ -31,10 +44,34 @@
     <button class="back" onclick="goBack()">⬅ Kembali</button>
     <h2>⚙️ Atur Kode Akses</h2>
 
+    <!-- AREA DIAGNOSIS DATABASE -->
+    <div class="card" style="border-left: 5px solid #ff9800;">
+        <h3>🛠 Cek Koneksi Database</h3>
+        <p style="font-size: 12px; color: #666;">Pastikan nama collection & field sesuai dengan yang ada di Firebase Anda.</p>
+        
+        <div style="display: flex; gap: 10px;">
+            <div style="flex: 1;">
+                <label>Nama Collection:</label>
+                <!-- Default saya set ke 'siswa' sesuai file lama Anda -->
+                <input type="text" id="inputColl" value="siswa" placeholder="cth: students">
+            </div>
+            <div style="flex: 1;">
+                <label>Nama Field Kelas:</label>
+                <!-- Default saya set ke 'kelas' -->
+                <input type="text" id="inputField" value="kelas" placeholder="cth: class">
+            </div>
+        </div>
+        <button class="btn-check" onclick="loadDaftarKelas()">🔄 MUAT DATA DARI FIREBASE</button>
+        
+        <div id="debugLog"></div>
+    </div>
+
+    <!-- AREA INPUT UTAMA -->
     <div class="card">
         <h3>1. Buat Kode Baru</h3>
-        <label>Pilih Kelas (Dari Database Siswa):</label>
-        <select id="pilihKelas"><option>Loading...</option></select>
+        <label>Pilih Kelas:</label>
+        <select id="pilihKelas"><option value="">-- Klik Tombol Oranye di Atas Dulu --</option></select>
+
         <label>Set Kode Akses Unik:</label>
         <input type="text" id="inputKode" placeholder="Contoh: XIPA1" onkeyup="this.value = this.value.toUpperCase()">
         <button onclick="simpanKode()">💾 SIMPAN KODE</button>
@@ -52,7 +89,7 @@
     </div>
 
     <script>
-        // --- CONFIG FIREBASE (WAJIB GANTI) ---
+        // --- CONFIG FIREBASE (PASTIKAN SUDAH BENAR) ---
   const firebaseConfig = {
       apiKey: "AIzaSyBWNPcSAzQ_DC5bgXMfC6A3e2QkNMBmimw",
       authDomain: "sapamanusa.firebaseapp.com",
@@ -61,26 +98,103 @@
       messagingSenderId: "1018203726618",
       appId: "1:1018203726618:web:e1715826ad005680c242a3"
   };
+        
+        // Inisialisasi
         firebase.initializeApp(firebaseConfig);
         const db = firebase.firestore();
+        const auth = firebase.auth();
 
         function goBack() { try { window.location.href = "./admin_menu.html"; } catch(e) { alert("Back Error"); } }
 
         window.onload = async () => {
+            // Cek Admin
             try { if(sessionStorage.getItem('isAdmin') !== 'true') window.location.href="./index.html"; } catch(e){}
             
-            const select = document.getElementById('pilihKelas');
+            // Login Anonim dulu (PENTING AGAR BISA BACA DATABASE)
             try {
-                const snap = await db.collection('siswa').get(); 
+                await auth.signInAnonymously();
+                console.log("Login Anonim Berhasil");
+                setupRealtimeListener(); // Load tabel kode setelah login
+            } catch (error) {
+                alert("Gagal Login ke Database: " + error.message);
+                console.error(error);
+            }
+        };
+
+        // --- FUNGSI LOAD KELAS DENGAN DIAGNOSA ---
+        async function loadDaftarKelas() {
+            const select = document.getElementById('pilihKelas');
+            const debugLog = document.getElementById('debugLog');
+            const collName = document.getElementById('inputColl').value.trim();
+            const fieldName = document.getElementById('inputField').value.trim();
+
+            debugLog.style.display = 'block';
+            debugLog.innerHTML = `⏳ Mencoba membaca collection: <b>'${collName}'</b>...`;
+            select.innerHTML = '<option>Sedang memuat...</option>';
+
+            try {
+                // Ambil data (limit 1000 biar gak berat)
+                const snap = await db.collection(collName).limit(1000).get(); 
+                
+                if (snap.empty) {
+                    debugLog.innerHTML += `<br>❌ GAGAL: Collection '${collName}' kosong atau tidak ditemukan.<br>Tips: Cek ejaan di Firebase Console (huruf besar/kecil berpengaruh).`;
+                    select.innerHTML = '<option>Data Kosong</option>';
+                    return;
+                }
+
+                debugLog.innerHTML += `<br>✅ KONEKSI SUKSES! Ditemukan ${snap.size} dokumen data siswa.`;
+                debugLog.innerHTML += `<br>🔍 Mencari field kelas bernama: <b>'${fieldName}'</b>...`;
+
                 let kelasUnik = new Set();
-                snap.forEach(doc => { if(doc.data().kelas) kelasUnik.add(doc.data().kelas); });
+                let fieldFound = false;
+
+                snap.forEach(doc => { 
+                    const data = doc.data();
+                    if (data[fieldName]) {
+                        kelasUnik.add(data[fieldName]);
+                        fieldFound = true;
+                    }
+                });
+
+                if (!fieldFound) {
+                    debugLog.innerHTML += `<br>❌ GAGAL: Field '${fieldName}' tidak ditemukan di data siswa.<br>Coba cek salah satu dokumen siswa di Firebase, apa nama kolom kelasnya? (misal: 'rombel', 'class', atau 'tingkat')`;
+                    select.innerHTML = '<option>Kolom Salah</option>';
+                    return;
+                }
+
+                // Sukses
+                debugLog.innerHTML += `<br>✅ BERHASIL! Ditemukan ${kelasUnik.size} nama kelas unik.`;
                 
                 select.innerHTML = '<option value="">-- Pilih Kelas --</option>';
                 Array.from(kelasUnik).sort().forEach(k => {
                     select.innerHTML += `<option value="${k}">${k}</option>`;
                 });
-            } catch(e) { select.innerHTML = '<option>Gagal load database siswa</option>'; }
 
+            } catch(e) { 
+                debugLog.innerHTML += `<br>⛔ ERROR: ${e.message}`;
+                if(e.message.includes("permission")) {
+                    debugLog.innerHTML += `<br>👉 MASALAH IZIN: Rules Firebase memblokir akses.`;
+                }
+            }
+        }
+
+        async function simpanKode() {
+            const kelas = document.getElementById('pilihKelas').value;
+            const kode = document.getElementById('inputKode').value.trim();
+            if(!kelas || !kode) return alert("Lengkapi data!");
+            
+            // Cek duplikat
+            const cek = await db.collection('akses_kelas').where('kode','==',kode).get();
+            if(!cek.empty) return alert("Kode sudah dipakai!");
+
+            // Simpan
+            await db.collection('akses_kelas').doc(kelas.replace(/\s+/g,'_')).set({
+                nama_kelas: kelas, kode: kode, updated: firebase.firestore.FieldValue.serverTimestamp()
+            });
+            alert("Tersimpan!"); document.getElementById('inputKode').value = "";
+        }
+
+        function setupRealtimeListener() {
             db.collection('akses_kelas').onSnapshot(snap => {
                 let html = "<tr><th>Kelas</th><th>Kode</th><th>Aksi</th></tr>";
                 snap.forEach(doc => {
@@ -89,20 +203,6 @@
                 });
                 document.getElementById('tabelData').innerHTML = html;
             });
-        };
-
-        async function simpanKode() {
-            const kelas = document.getElementById('pilihKelas').value;
-            const kode = document.getElementById('inputKode').value.trim();
-            if(!kelas || !kode) return alert("Lengkapi data!");
-            
-            const cek = await db.collection('akses_kelas').where('kode','==',kode).get();
-            if(!cek.empty) return alert("Kode sudah dipakai!");
-
-            await db.collection('akses_kelas').doc(kelas.replace(/\s+/g,'_')).set({
-                nama_kelas: kelas, kode: kode, updated: firebase.firestore.FieldValue.serverTimestamp()
-            });
-            alert("Tersimpan!"); document.getElementById('inputKode').value = "";
         }
 
         window.hapus = async (id) => { if(confirm("Hapus?")) await db.collection('akses_kelas').doc(id).delete(); }
