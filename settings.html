@@ -26,11 +26,15 @@
         
         /* Area Pesan Error */
         #debugLog { 
-            background: #212121; color: #00e676; 
-            padding: 10px; margin-top: 10px; 
+            background: #263238; color: #ff5252; 
+            padding: 15px; margin-top: 10px; 
             border-radius: 5px; font-family: monospace; font-size: 12px;
-            display: none;
+            display: none; line-height: 1.5;
         }
+        .code-snippet { background: #000; color: #00e676; padding: 2px 5px; border-radius: 3px; }
+        
+        #authStatus { font-size: 12px; font-weight: bold; color: #666; float: right; margin-top: -30px; }
+
         .running-footer {
             position: fixed; bottom: 0; left: 0; width: 100%;
             background: #004d40; color: #fff;
@@ -41,6 +45,7 @@
 </head>
 <body>
     <button class="back" onclick="goBack()">⬅ Kembali</button>
+    <div id="authStatus">Status Auth: Memeriksa...</div>
     <h2>⚙️ Atur Kode Akses</h2>
 
     <!-- AREA DIAGNOSIS DATABASE -->
@@ -51,12 +56,10 @@
         <div style="display: flex; gap: 10px;">
             <div style="flex: 1;">
                 <label>Nama Collection:</label>
-                <!-- Default saya set ke 'siswa' -->
                 <input type="text" id="inputColl" value="siswa" placeholder="cth: siswa">
             </div>
             <div style="flex: 1;">
                 <label>Nama Field Kelas:</label>
-                <!-- Default saya set ke 'kelas' -->
                 <input type="text" id="inputField" value="kelas" placeholder="cth: kelas">
             </div>
         </div>
@@ -106,16 +109,23 @@
         function goBack() { try { window.location.href = "./admin_menu.html"; } catch(e) { alert("Back Error"); } }
 
         window.onload = async () => {
-            // Cek Admin
+            // Cek Admin di Session Storage
             try { if(sessionStorage.getItem('isAdmin') !== 'true') window.location.href="./index.html"; } catch(e){}
             
-            // Login Anonim dulu (PENTING AGAR BISA BACA DATABASE)
-            try {
-                await auth.signInAnonymously();
-                setupRealtimeListener(); // Load tabel kode setelah login
-            } catch (error) {
-                alert("Gagal Login ke Database: " + error.message);
-            }
+            // Monitor Status Auth
+            auth.onAuthStateChanged(user => {
+                const statusEl = document.getElementById('authStatus');
+                if (user) {
+                    statusEl.innerText = "Status Auth: ✅ Terhubung (Anonymous)";
+                    statusEl.style.color = "green";
+                    setupRealtimeListener(); // Load data tabel kode
+                } else {
+                    statusEl.innerText = "Status Auth: ❌ Belum Login";
+                    statusEl.style.color = "red";
+                    // Coba login lagi
+                    auth.signInAnonymously().catch(e => console.error(e));
+                }
+            });
         };
 
         // --- FUNGSI LOAD KELAS DENGAN DIAGNOSA ---
@@ -123,35 +133,26 @@
             const select = document.getElementById('pilihKelas');
             const debugLog = document.getElementById('debugLog');
             
-            // Perbaikan: Pastikan tidak kosong
-            let collName = document.getElementById('inputColl').value.trim();
-            let fieldName = document.getElementById('inputField').value.trim();
-
-            if(!collName) {
-                collName = 'siswa'; // Default fallback
-                document.getElementById('inputColl').value = 'siswa';
-            }
-            if(!fieldName) {
-                fieldName = 'kelas'; // Default fallback
-                document.getElementById('inputField').value = 'kelas';
-            }
+            let collName = document.getElementById('inputColl').value.trim() || 'siswa';
+            let fieldName = document.getElementById('inputField').value.trim() || 'kelas';
 
             debugLog.style.display = 'block';
-            debugLog.innerHTML = `⏳ Mencoba membaca collection: <b>'${collName}'</b>...`;
+            debugLog.innerHTML = `⏳ Mencoba membaca collection: <span class="code-snippet">${collName}</span>...`;
+            debugLog.style.color = "#fff"; // Reset warna default log
             select.innerHTML = '<option>Sedang memuat...</option>';
 
             try {
-                // Ambil data (limit 1000 biar gak berat)
-                const snap = await db.collection(collName).limit(1000).get(); 
+                // Ambil data
+                const snap = await db.collection(collName).limit(50).get(); 
                 
                 if (snap.empty) {
-                    debugLog.innerHTML += `<br>❌ GAGAL: Collection '${collName}' kosong atau tidak ditemukan.<br>Tips: Cek ejaan di Firebase Console (huruf besar/kecil berpengaruh).`;
+                    debugLog.innerHTML += `<br>❌ GAGAL: Collection '${collName}' kosong atau tidak ditemukan.`;
                     select.innerHTML = '<option>Data Kosong</option>';
                     return;
                 }
 
                 debugLog.innerHTML += `<br>✅ KONEKSI SUKSES! Ditemukan ${snap.size} dokumen data siswa.`;
-                debugLog.innerHTML += `<br>🔍 Mencari field kelas bernama: <b>'${fieldName}'</b>...`;
+                debugLog.innerHTML += `<br>🔍 Mencari field kelas bernama: <span class="code-snippet">${fieldName}</span>...`;
 
                 let kelasUnik = new Set();
                 let fieldFound = false;
@@ -165,13 +166,14 @@
                 });
 
                 if (!fieldFound) {
-                    debugLog.innerHTML += `<br>❌ GAGAL: Field '${fieldName}' tidak ditemukan di data siswa.<br>Coba cek salah satu dokumen siswa di Firebase, apa nama kolom kelasnya? (misal: 'rombel', 'class', atau 'tingkat')`;
+                    debugLog.innerHTML += `<br>❌ GAGAL: Field '${fieldName}' tidak ditemukan di data siswa.<br>Coba cek nama kolom di Firebase (misal: 'rombel' atau 'class').`;
                     select.innerHTML = '<option>Kolom Salah</option>';
                     return;
                 }
 
                 // Sukses
                 debugLog.innerHTML += `<br>✅ BERHASIL! Ditemukan ${kelasUnik.size} nama kelas unik.`;
+                debugLog.style.color = "#00e676"; // Warna hijau sukses
                 
                 select.innerHTML = '<option value="">-- Pilih Kelas --</option>';
                 Array.from(kelasUnik).sort().forEach(k => {
@@ -179,9 +181,19 @@
                 });
 
             } catch(e) { 
-                debugLog.innerHTML += `<br>⛔ ERROR: ${e.message}`;
-                if(e.message.includes("permission")) {
-                    debugLog.innerHTML += `<br>👉 MASALAH IZIN: Rules Firebase memblokir akses.`;
+                // PENANGANAN ERROR KHUSUS
+                debugLog.style.color = "#ff5252";
+                debugLog.innerHTML += `<br><br>⛔ <b>ERROR: ${e.code} - ${e.message}</b>`;
+                
+                if(e.code === 'permission-denied' || e.message.includes("permission")) {
+                    debugLog.innerHTML += `
+                        <br><br>👉 <b>SOLUSI WAJIB DILAKUKAN DI FIREBASE CONSOLE:</b>
+                        <br>1. Buka <b>Authentication</b> > Tab <b>Sign-in method</b> > Aktifkan <b>Anonymous</b>.
+                        <br>2. Buka <b>Firestore Database</b> > Tab <b>Rules</b>.
+                        <br>3. Ubah Rules menjadi (Untuk sementara):
+                        <br><span class="code-snippet">allow read, write: if true;</span>
+                        <br>4. Klik <b>Publish</b> dan coba lagi tombol ini.
+                    `;
                 }
             }
         }
@@ -191,13 +203,17 @@
             const kode = document.getElementById('inputKode').value.trim();
             if(!kelas || !kode) return alert("Lengkapi data!");
             
-            const cek = await db.collection('akses_kelas').where('kode','==',kode).get();
-            if(!cek.empty) return alert("Kode sudah dipakai!");
+            try {
+                const cek = await db.collection('akses_kelas').where('kode','==',kode).get();
+                if(!cek.empty) return alert("Kode sudah dipakai!");
 
-            await db.collection('akses_kelas').doc(kelas.replace(/\s+/g,'_')).set({
-                nama_kelas: kelas, kode: kode, updated: firebase.firestore.FieldValue.serverTimestamp()
-            });
-            alert("Tersimpan!"); document.getElementById('inputKode').value = "";
+                await db.collection('akses_kelas').doc(kelas.replace(/\s+/g,'_')).set({
+                    nama_kelas: kelas, kode: kode, updated: firebase.firestore.FieldValue.serverTimestamp()
+                });
+                alert("Tersimpan!"); document.getElementById('inputKode').value = "";
+            } catch(e) {
+                alert("Gagal Simpan: " + e.message);
+            }
         }
 
         function setupRealtimeListener() {
@@ -208,6 +224,12 @@
                     html += `<tr><td><b>${d.nama_kelas}</b></td><td><span class="badge">${d.kode}</span></td><td><button style="width:auto; padding:5px; background:red; margin:0;" onclick="hapus('${doc.id}')">Hapus</button></td></tr>`;
                 });
                 document.getElementById('tabelData').innerHTML = html;
+            }, error => {
+                console.error("Error listener:", error);
+                // Jika error permission di listener tabel
+                if(error.code === 'permission-denied') {
+                    document.getElementById('tabelData').innerHTML = "<tr><td colspan='3' style='color:red'>Izin Ditolak: Cek Rules Firebase Anda.</td></tr>";
+                }
             });
         }
 
@@ -215,3 +237,27 @@
     </script>
 </body>
 </html>
+```
+
+### Cara Memperbaiki Error "Missing Permissions" (Manual)
+
+Jika error masih muncul setelah ganti kode, Anda wajib melakukan ini di **Firebase Console**:
+
+1.  **Aktifkan Login Anonim (Anonymous Auth):**
+    * Buka Firebase Console > Menu **Authentication**.
+    * Klik tab **Sign-in method**.
+    * Klik **Anonymous** -> Ubah jadi **Enable** -> Simpan.
+
+2.  **Perbaiki Firestore Rules:**
+    * Buka Firebase Console > Menu **Firestore Database**.
+    * Klik tab **Rules**.
+    * Ganti kodenya menjadi seperti ini (Paling Longgar, hanya untuk tes):
+        ```text
+        rules_version = '2';
+        service cloud.firestore {
+          match /databases/{database}/documents {
+            match /{document=**} {
+              allow read, write: if true;
+            }
+          }
+        }
