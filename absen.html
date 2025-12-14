@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <title>Scanner - SMART MANUSA</title>
+    <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background: #000; margin: 0; color: white; text-align: center; overflow: hidden; }
+        .info-bar { position: fixed; top: 0; left: 0; width: 100%; background: rgba(0,77,64,0.9); padding: 15px; z-index: 10; font-weight: bold; border-bottom: 2px solid #00e676; display: flex; justify-content: space-between; box-sizing: border-box; }
+        .video-wrapper { position: relative; width: 100vw; height: 100vh; display: flex; justify-content: center; align-items: center; }
+        video { width: 100%; height: 100%; object-fit: cover; }
+        canvas { position: absolute; top: 0; left: 0; }
+        .controls { position: fixed; bottom: 40px; left: 0; width: 100%; z-index: 20; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+        .btn { padding: 12px 25px; border-radius: 30px; border: none; font-weight: bold; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.5); font-size: 14px; }
+        .btn-kirim { background: #00e676; color: #003300; display: none; width: 80%; max-width: 300px; padding: 15px; font-size: 16px; animation: pulse 2s infinite;}
+        .btn-back { background: rgba(211, 47, 47, 0.9); color: white; }
+        .btn-cam { background: rgba(255,171,0, 0.9); color: #000; }
+        #loading { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 18px; font-weight: bold; z-index: 5; background: rgba(0,0,0,0.7); padding: 20px; border-radius: 10px; }
+        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.05); } 100% { transform: scale(1); } }
+
+        .running-footer {
+            position: fixed; bottom: 0; left: 0; width: 100%;
+            background: #004d40; color: #fff;
+            padding: 8px 0; font-size: 12px; font-weight: bold;
+            z-index: 1000;
+        }
+    </style>
+</head>
+<body>
+    <div id="loading">⏳ Memuat Sistem Wajah...</div>
+    <div class="info-bar">
+        <span id="namaKelas">...</span>
+        <span id="counter" style="color: #00e676;">0 Siswa</span>
+    </div>
+    
+    <div class="video-wrapper">
+        <video id="video" autoplay muted playsinline></video>
+        <canvas id="overlay"></canvas>
+    </div>
+
+    <div class="controls">
+        <button onclick="kirimKeFirebase()" class="btn btn-kirim" id="btnKirim">🚀 KIRIM DATA ABSENSI</button>
+        <div style="display: flex; gap: 10px;">
+            <button onclick="gantiKamera()" class="btn btn-cam">🔄 Kamera</button>
+            <button onclick="keluar()" class="btn btn-back">🚪 Keluar</button>
+        </div>
+    </div>
+
+    <div class="running-footer">
+        <marquee direction="left" scrollamount="6">
+            &copy; Layanan Digital By Halil Budiyanto, S.Kom.I
+        </marquee>
+    </div>
+
+<script>
+    // --- CONFIG FIREBASE (WAJIB GANTI) ---
+  const firebaseConfig = {
+      apiKey: "AIzaSyBWNPcSAzQ_DC5bgXMfC6A3e2QkNMBmimw",
+      authDomain: "sapamanusa.firebaseapp.com",
+      projectId: "sapamanusa",
+      storageBucket: "sapamanusa.firebasestorage.app",
+      messagingSenderId: "1018203726618",
+      appId: "1:1018203726618:web:e1715826ad005680c242a3"
+  };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+
+    const MODEL_URL = 'https://justadudewhohacks.github.io/face-api.js/models';
+    let faceMatcher, currentStream, useFront = false;
+    let dataKirim = [], keranjang = new Set(), KELAS_AKTIF = null;
+
+    window.onload = async () => {
+        const sesi = sessionStorage.getItem('kelasAktif');
+        if(!sesi) window.location.href = "index.html";
+        KELAS_AKTIF = JSON.parse(sesi);
+        document.getElementById('namaKelas').innerText = KELAS_AKTIF.nama;
+
+        try {
+            await Promise.all([
+                faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+                faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
+                faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL),
+                faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL)
+            ]);
+            await loadDataWajah(KELAS_AKTIF.nama);
+        } catch (err) { alert("Error: " + err.message); }
+    };
+
+    async function loadDataWajah(namaKelas) {
+        const namaFile = namaKelas.replace(/\s+/g, '-') + ".json";
+        try {
+            const res = await fetch(`./data_wajah/${namaFile}`);
+            if(!res.ok) throw new Error("Data wajah belum ada.");
+            const data = await res.json();
+            const labeled = data.map(s => new faceapi.LabeledFaceDescriptors(s.label, s.descriptors.map(d=>new Float32Array(d))));
+            faceMatcher = new faceapi.FaceMatcher(labeled, 0.50);
+            document.getElementById('loading').style.display = 'none';
+            startVideo(); deteksiLoop();
+        } catch (err) { alert(err.message); window.location.href="index.html"; }
+    }
+
+    async function startVideo() {
+        if(currentStream) currentStream.getTracks().forEach(t=>t.stop());
+        currentStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: useFront?'user':'environment' } });
+        document.getElementById('video').srcObject = currentStream;
+    }
+    function gantiKamera() { useFront = !useFront; startVideo(); }
+
+    function deteksiLoop() {
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('overlay');
+        video.addEventListener('play', () => {
+            const displaySize = { width: video.videoWidth, height: video.videoHeight };
+            faceapi.matchDimensions(canvas, displaySize);
+            setInterval(async () => {
+                if(video.paused || video.ended) return;
+                const det = await faceapi.detectAllFaces(video, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks().withFaceDescriptors();
+                const resized = faceapi.resizeResults(det, displaySize);
+                const ctx = canvas.getContext('2d'); ctx.clearRect(0, 0, canvas.width, canvas.height);
+                
+                resized.map(d => faceMatcher.findBestMatch(d.descriptor)).forEach((res, i) => {
+                    const box = resized[i].detection.box;
+                    if(res.label !== 'unknown') {
+                        if(!keranjang.has(res.label)) {
+                            keranjang.add(res.label);
+                            dataKirim.push({ nama: res.label, kelas: KELAS_AKTIF.nama });
+                            document.getElementById('counter').innerText = dataKirim.length + " Siswa";
+                            document.getElementById('btnKirim').style.display = 'block';
+                        }
+                        new faceapi.draw.DrawBox(box, { label: res.label, boxColor: '#00e676' }).draw(canvas);
+                    } else {
+                        new faceapi.draw.DrawBox(box, { label: "Unknown", boxColor: 'red' }).draw(canvas);
+                    }
+                });
+            }, 200);
+        });
+    }
+
+    async function kirimKeFirebase() {
+        const btn = document.getElementById('btnKirim');
+        btn.innerText = "⏳ MENYIMPAN..."; btn.disabled = true;
+        const batch = db.batch();
+        const today = new Date().toISOString().split('T')[0];
+        
+        dataKirim.forEach(s => {
+            const docId = `${today}_${s.nama.replace(/\s+/g, '_').toUpperCase()}`; 
+            batch.set(db.collection('absensi').doc(docId), {
+                tanggal: today, nama: s.nama, kelas: s.kelas, jenis: "H", keterangan: "Face Rec",
+                waktu: firebase.firestore.FieldValue.serverTimestamp()
+            }, { merge: true });
+        });
+
+        try { await batch.commit(); alert("✅ ABSENSI BERHASIL TERCATAT!"); keluar(); }
+        catch(e) { alert("Gagal: " + e.message); btn.disabled = false; }
+    }
+
+    function keluar() { sessionStorage.removeItem('kelasAktif'); window.location.href="index.html"; }
+</script>
+</body>
+</html>

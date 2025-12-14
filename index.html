@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SMART MANUSA - Login</title>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background: #e0f2f1; height: 100vh; display: flex; align-items: center; justify-content: center; margin: 0; flex-direction: column; overflow: hidden; }
+        .card { background: white; padding: 40px; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); width: 90%; max-width: 400px; text-align: center; margin-bottom: 50px; z-index: 10; }
+        
+        h2 { color: #00695c; margin: 10px 0 5px 0; font-weight: 800; letter-spacing: 1px; font-size: 28px; }
+        .subtitle { font-size: 11px; font-weight: bold; color: #004d40; margin-bottom: 5px; text-transform: uppercase; }
+        .school { font-size: 14px; color: #555; margin-top: 0; margin-bottom: 30px; font-weight: 600; border-bottom: 2px solid #e0f2f1; padding-bottom: 15px; display: inline-block;}
+        
+        input { font-size: 20px; letter-spacing: 2px; text-align: center; width: 100%; padding: 15px; border: 2px solid #b2dfdb; border-radius: 12px; margin-bottom: 20px; text-transform: uppercase; font-weight: bold; outline: none; transition: 0.3s; box-sizing: border-box; }
+        input:focus { border-color: #00695c; box-shadow: 0 0 0 4px rgba(0, 105, 92, 0.1); }
+        
+        button { width: 100%; padding: 15px; background: #00695c; color: white; border: none; border-radius: 12px; font-size: 16px; font-weight: bold; cursor: pointer; transition: 0.3s; }
+        button:hover { background: #004d40; transform: translateY(-2px); }
+        
+        .icon-main { font-size: 50px; color: #00695c; margin-bottom: 10px; background: #e0f2f1; padding: 20px; border-radius: 50%; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+        #msg { color: #d32f2f; margin-top: 15px; font-weight: bold; font-size: 14px; display: none; background: #ffebee; padding: 10px; border-radius: 8px; }
+        
+        /* FOOTER BERJALAN */
+        .running-footer {
+            position: fixed; bottom: 0; left: 0; width: 100%;
+            background: #004d40; color: #fff;
+            padding: 10px 0; font-size: 14px; font-weight: bold;
+            z-index: 1000; box-shadow: 0 -2px 10px rgba(0,0,0,0.2);
+        }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <i class="fa-solid fa-school icon-main"></i>
+    <h2>SMART MANUSA</h2>
+    <div class="subtitle">Sistem Monitoring Absensi Real-time Terintegrasi</div>
+    <div class="school">SMK Maarif NU 1 Ajibarang</div>
+
+    <input type="text" id="kodeInput" placeholder="KODE AKSES" onkeyup="this.value = this.value.toUpperCase(); handleEnter(event)">
+    <button onclick="prosesLogin()" id="btnLogin">MASUK</button>
+    <div id="msg"></div>
+</div>
+
+<!-- FOOTER -->
+<div class="running-footer">
+    <marquee direction="left" scrollamount="6">
+        &copy; Layanan Digital By Halil Budiyanto, S.Kom.I
+    </marquee>
+</div>
+
+<script>
+    // --- 1. CONFIG FIREBASE (WAJIB GANTI) ---
+  const firebaseConfig = {
+      apiKey: "AIzaSyBWNPcSAzQ_DC5bgXMfC6A3e2QkNMBmimw",
+      authDomain: "sapamanusa.firebaseapp.com",
+      projectId: "sapamanusa",
+      storageBucket: "sapamanusa.firebasestorage.app",
+      messagingSenderId: "1018203726618",
+      appId: "1:1018203726618:web:e1715826ad005680c242a3"
+  };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+
+    // --- 2. PIN ADMIN ---
+    const PIN_ADMIN = "ADMIN123"; 
+
+    function handleEnter(e) { if(e.key === "Enter") prosesLogin(); }
+
+    async function prosesLogin() {
+        const kode = document.getElementById('kodeInput').value.trim().toUpperCase();
+        const btn = document.getElementById('btnLogin');
+        const msg = document.getElementById('msg');
+        
+        if(!kode) return;
+
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Memeriksa...';
+        btn.disabled = true;
+        msg.style.display = 'none';
+
+        if(kode === PIN_ADMIN) {
+            sessionStorage.setItem('isAdmin', 'true');
+            window.location.href = "admin_menu.html";
+            return;
+        }
+
+        try {
+            const snapshot = await db.collection('akses_kelas').where('kode', '==', kode).get();
+
+            if (snapshot.empty) {
+                msg.innerText = "❌ Kode Tidak Ditemukan!"; msg.style.display = 'block';
+                btn.innerHTML = "MASUK"; btn.disabled = false;
+            } else {
+                const dataKelas = snapshot.docs[0].data();
+                sessionStorage.setItem('kelasAktif', JSON.stringify({
+                    nama: dataKelas.nama_kelas,
+                    kode: dataKelas.kode
+                }));
+                window.location.href = "absen.html";
+            }
+        } catch (err) {
+            msg.innerText = "Error: " + err.message; msg.style.display = 'block';
+            btn.innerHTML = "MASUK"; btn.disabled = false;
+        }
+    }
+</script>
+</body>
+</html>
