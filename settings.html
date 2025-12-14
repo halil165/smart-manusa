@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Admin - Atur Kode</title>
-    <!-- Tambahkan Library Auth -->
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script> 
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
@@ -47,18 +46,18 @@
     <!-- AREA DIAGNOSIS DATABASE -->
     <div class="card" style="border-left: 5px solid #ff9800;">
         <h3>🛠 Cek Koneksi Database</h3>
-        <p style="font-size: 12px; color: #666;">Pastikan nama collection & field sesuai dengan yang ada di Firebase Anda.</p>
+        <p style="font-size: 12px; color: #666;">Isi nama collection sesuai database Firebase Anda (contoh: siswa / students).</p>
         
         <div style="display: flex; gap: 10px;">
             <div style="flex: 1;">
                 <label>Nama Collection:</label>
-                <!-- Default saya set ke 'siswa' sesuai file lama Anda -->
-                <input type="text" id="inputColl" value="siswa" placeholder="cth: students">
+                <!-- Default saya set ke 'siswa' -->
+                <input type="text" id="inputColl" value="siswa" placeholder="cth: siswa">
             </div>
             <div style="flex: 1;">
                 <label>Nama Field Kelas:</label>
                 <!-- Default saya set ke 'kelas' -->
-                <input type="text" id="inputField" value="kelas" placeholder="cth: class">
+                <input type="text" id="inputField" value="kelas" placeholder="cth: kelas">
             </div>
         </div>
         <button class="btn-check" onclick="loadDaftarKelas()">🔄 MUAT DATA DARI FIREBASE</button>
@@ -113,11 +112,9 @@
             // Login Anonim dulu (PENTING AGAR BISA BACA DATABASE)
             try {
                 await auth.signInAnonymously();
-                console.log("Login Anonim Berhasil");
                 setupRealtimeListener(); // Load tabel kode setelah login
             } catch (error) {
                 alert("Gagal Login ke Database: " + error.message);
-                console.error(error);
             }
         };
 
@@ -125,8 +122,19 @@
         async function loadDaftarKelas() {
             const select = document.getElementById('pilihKelas');
             const debugLog = document.getElementById('debugLog');
-            const collName = document.getElementById('inputColl').value.trim();
-            const fieldName = document.getElementById('inputField').value.trim();
+            
+            // Perbaikan: Pastikan tidak kosong
+            let collName = document.getElementById('inputColl').value.trim();
+            let fieldName = document.getElementById('inputField').value.trim();
+
+            if(!collName) {
+                collName = 'siswa'; // Default fallback
+                document.getElementById('inputColl').value = 'siswa';
+            }
+            if(!fieldName) {
+                fieldName = 'kelas'; // Default fallback
+                document.getElementById('inputField').value = 'kelas';
+            }
 
             debugLog.style.display = 'block';
             debugLog.innerHTML = `⏳ Mencoba membaca collection: <b>'${collName}'</b>...`;
@@ -183,11 +191,9 @@
             const kode = document.getElementById('inputKode').value.trim();
             if(!kelas || !kode) return alert("Lengkapi data!");
             
-            // Cek duplikat
             const cek = await db.collection('akses_kelas').where('kode','==',kode).get();
             if(!cek.empty) return alert("Kode sudah dipakai!");
 
-            // Simpan
             await db.collection('akses_kelas').doc(kelas.replace(/\s+/g,'_')).set({
                 nama_kelas: kelas, kode: kode, updated: firebase.firestore.FieldValue.serverTimestamp()
             });
