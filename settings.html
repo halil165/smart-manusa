@@ -24,17 +24,12 @@
         th { background: #e0f2f1; color: #00695c;}
         .badge { background: #ffab00; color: #000; padding: 2px 8px; border-radius: 10px; font-size: 12px; font-weight: bold; }
         
-        /* Area Pesan Error */
         #debugLog { 
-            background: #263238; color: #ff5252; 
+            background: #212121; color: #00e676; 
             padding: 15px; margin-top: 10px; 
             border-radius: 5px; font-family: monospace; font-size: 12px;
             display: none; line-height: 1.5;
         }
-        .code-snippet { background: #000; color: #00e676; padding: 2px 5px; border-radius: 3px; }
-        
-        #authStatus { font-size: 12px; font-weight: bold; color: #666; float: right; margin-top: -30px; }
-
         .running-footer {
             position: fixed; bottom: 0; left: 0; width: 100%;
             background: #004d40; color: #fff;
@@ -45,25 +40,27 @@
 </head>
 <body>
     <button class="back" onclick="goBack()">⬅ Kembali</button>
-    <div id="authStatus">Status Auth: Memeriksa...</div>
+    <div id="authStatus" style="float:right; font-size:12px; font-weight:bold; color:#666;">Auth...</div>
     <h2>⚙️ Atur Kode Akses</h2>
 
     <!-- AREA DIAGNOSIS DATABASE -->
     <div class="card" style="border-left: 5px solid #ff9800;">
-        <h3>🛠 Cek Koneksi Database</h3>
-        <p style="font-size: 12px; color: #666;">Isi nama collection sesuai database Firebase Anda (contoh: siswa / students).</p>
+        <h3>🛠 Sumber Data Kelas</h3>
+        <p style="font-size: 12px; color: #666;">Mengambil daftar kelas dari Master Data.</p>
         
         <div style="display: flex; gap: 10px;">
             <div style="flex: 1;">
                 <label>Nama Collection:</label>
-                <input type="text" id="inputColl" value="siswa" placeholder="cth: siswa">
+                <!-- Default diubah ke master_siswa -->
+                <input type="text" id="inputColl" value="master_siswa" placeholder="cth: master_siswa">
             </div>
             <div style="flex: 1;">
                 <label>Nama Field Kelas:</label>
+                <!-- Default field pencarian -->
                 <input type="text" id="inputField" value="kelas" placeholder="cth: kelas">
             </div>
         </div>
-        <button class="btn-check" onclick="loadDaftarKelas()">🔄 MUAT DATA DARI FIREBASE</button>
+        <button class="btn-check" onclick="loadDaftarKelas()">🔄 MUAT DATA KELAS</button>
         
         <div id="debugLog"></div>
     </div>
@@ -72,7 +69,7 @@
     <div class="card">
         <h3>1. Buat Kode Baru</h3>
         <label>Pilih Kelas:</label>
-        <select id="pilihKelas"><option value="">-- Klik Tombol Oranye di Atas Dulu --</option></select>
+        <select id="pilihKelas"><option value="">-- Klik Tombol Oranye di Atas --</option></select>
 
         <label>Set Kode Akses Unik:</label>
         <input type="text" id="inputKode" placeholder="Contoh: XIPA1" onkeyup="this.value = this.value.toUpperCase()">
@@ -101,7 +98,6 @@
       appId: "1:1018203726618:web:e1715826ad005680c242a3"
   };
         
-        // Inisialisasi
         firebase.initializeApp(firebaseConfig);
         const db = firebase.firestore();
         const auth = firebase.auth();
@@ -109,108 +105,92 @@
         function goBack() { try { window.location.href = "./admin_menu.html"; } catch(e) { alert("Back Error"); } }
 
         window.onload = async () => {
-            // Cek Admin di Session Storage
             try { if(sessionStorage.getItem('isAdmin') !== 'true') window.location.href="./index.html"; } catch(e){}
             
-            // Monitor Status Auth
+            // Login Anonim Otomatis
             auth.onAuthStateChanged(user => {
-                const statusEl = document.getElementById('authStatus');
-                if (user) {
-                    statusEl.innerText = "Status Auth: ✅ Terhubung (Anonymous)";
-                    statusEl.style.color = "green";
-                    setupRealtimeListener(); // Load data tabel kode
+                const st = document.getElementById('authStatus');
+                if(user) {
+                    st.innerText = "✅ Database Connected"; st.style.color = "green";
+                    setupRealtimeListener();
                 } else {
-                    statusEl.innerText = "Status Auth: ❌ Belum Login";
-                    statusEl.style.color = "red";
-                    // Coba login lagi
-                    auth.signInAnonymously().catch(e => console.error(e));
+                    st.innerText = "🔄 Connecting...";
+                    auth.signInAnonymously().catch(e => alert(e.message));
                 }
             });
         };
 
-        // --- FUNGSI LOAD KELAS DENGAN DIAGNOSA ---
+        // --- FUNGSI LOAD KELAS DARI MASTER_SISWA ---
         async function loadDaftarKelas() {
             const select = document.getElementById('pilihKelas');
             const debugLog = document.getElementById('debugLog');
             
-            let collName = document.getElementById('inputColl').value.trim() || 'siswa';
-            let fieldName = document.getElementById('inputField').value.trim() || 'kelas';
+            let collName = document.getElementById('inputColl').value.trim();
+            let fieldName = document.getElementById('inputField').value.trim();
 
             debugLog.style.display = 'block';
-            debugLog.innerHTML = `⏳ Mencoba membaca collection: <span class="code-snippet">${collName}</span>...`;
-            debugLog.style.color = "#fff"; // Reset warna default log
+            debugLog.innerHTML = `⏳ Membaca collection: <b>'${collName}'</b>...`;
+            debugLog.style.color = "#fff";
             select.innerHTML = '<option>Sedang memuat...</option>';
 
             try {
-                // Ambil data
-                const snap = await db.collection(collName).limit(50).get(); 
+                // Ambil data dari master_siswa
+                const snap = await db.collection(collName).limit(100).get(); 
                 
                 if (snap.empty) {
-                    debugLog.innerHTML += `<br>❌ GAGAL: Collection '${collName}' kosong atau tidak ditemukan.`;
+                    debugLog.innerHTML += `<br>❌ GAGAL: Collection '${collName}' tidak ditemukan atau kosong.`;
                     select.innerHTML = '<option>Data Kosong</option>';
                     return;
                 }
 
-                debugLog.innerHTML += `<br>✅ KONEKSI SUKSES! Ditemukan ${snap.size} dokumen data siswa.`;
-                debugLog.innerHTML += `<br>🔍 Mencari field kelas bernama: <span class="code-snippet">${fieldName}</span>...`;
-
+                debugLog.innerHTML += `<br>✅ Ditemukan ${snap.size} data master.`;
+                
                 let kelasUnik = new Set();
-                let fieldFound = false;
-
+                
                 snap.forEach(doc => { 
                     const data = doc.data();
-                    if (data[fieldName]) {
-                        kelasUnik.add(data[fieldName]);
-                        fieldFound = true;
+                    // Cek berbagai kemungkinan nama field untuk kelas
+                    let namaKelas = data[fieldName] || data['nama_kelas'] || data['kelas'] || data['id'] || doc.id;
+                    
+                    if (namaKelas) {
+                        kelasUnik.add(namaKelas);
                     }
                 });
 
-                if (!fieldFound) {
-                    debugLog.innerHTML += `<br>❌ GAGAL: Field '${fieldName}' tidak ditemukan di data siswa.<br>Coba cek nama kolom di Firebase (misal: 'rombel' atau 'class').`;
-                    select.innerHTML = '<option>Kolom Salah</option>';
-                    return;
-                }
-
-                // Sukses
-                debugLog.innerHTML += `<br>✅ BERHASIL! Ditemukan ${kelasUnik.size} nama kelas unik.`;
-                debugLog.style.color = "#00e676"; // Warna hijau sukses
-                
+                // Urutkan dan Tampilkan
                 select.innerHTML = '<option value="">-- Pilih Kelas --</option>';
-                Array.from(kelasUnik).sort().forEach(k => {
+                const sortedKelas = Array.from(kelasUnik).sort();
+                
+                sortedKelas.forEach(k => {
                     select.innerHTML += `<option value="${k}">${k}</option>`;
                 });
 
+                debugLog.innerHTML += `<br>✅ SUKSES LOAD ${sortedKelas.length} KELAS.`;
+                debugLog.style.color = "#00e676";
+
             } catch(e) { 
-                // PENANGANAN ERROR KHUSUS
                 debugLog.style.color = "#ff5252";
-                debugLog.innerHTML += `<br><br>⛔ <b>ERROR: ${e.code} - ${e.message}</b>`;
-                
-                if(e.code === 'permission-denied' || e.message.includes("permission")) {
-                    debugLog.innerHTML += `
-                        <br><br>👉 <b>SOLUSI WAJIB DILAKUKAN DI FIREBASE CONSOLE:</b>
-                        <br>1. Buka <b>Authentication</b> > Tab <b>Sign-in method</b> > Aktifkan <b>Anonymous</b>.
-                        <br>2. Buka <b>Firestore Database</b> > Tab <b>Rules</b>.
-                        <br>3. Ubah Rules menjadi (Untuk sementara):
-                        <br><span class="code-snippet">allow read, write: if true;</span>
-                        <br>4. Klik <b>Publish</b> dan coba lagi tombol ini.
-                    `;
-                }
+                debugLog.innerHTML += `<br>⛔ ERROR: ${e.message}`;
             }
         }
 
         async function simpanKode() {
             const kelas = document.getElementById('pilihKelas').value;
             const kode = document.getElementById('inputKode').value.trim();
-            if(!kelas || !kode) return alert("Lengkapi data!");
+            if(!kelas || !kode) return alert("Pilih Kelas dan isi Kode!");
             
             try {
                 const cek = await db.collection('akses_kelas').where('kode','==',kode).get();
                 if(!cek.empty) return alert("Kode sudah dipakai!");
 
+                // Simpan mapping Kode -> Nama Kelas
                 await db.collection('akses_kelas').doc(kelas.replace(/\s+/g,'_')).set({
-                    nama_kelas: kelas, kode: kode, updated: firebase.firestore.FieldValue.serverTimestamp()
+                    nama_kelas: kelas, 
+                    kode: kode, 
+                    updated: firebase.firestore.FieldValue.serverTimestamp()
                 });
-                alert("Tersimpan!"); document.getElementById('inputKode').value = "";
+                alert("✅ Kode Berhasil Disimpan!"); 
+                document.getElementById('inputKode').value = "";
             } catch(e) {
                 alert("Gagal Simpan: " + e.message);
             }
@@ -224,12 +204,6 @@
                     html += `<tr><td><b>${d.nama_kelas}</b></td><td><span class="badge">${d.kode}</span></td><td><button style="width:auto; padding:5px; background:red; margin:0;" onclick="hapus('${doc.id}')">Hapus</button></td></tr>`;
                 });
                 document.getElementById('tabelData').innerHTML = html;
-            }, error => {
-                console.error("Error listener:", error);
-                // Jika error permission di listener tabel
-                if(error.code === 'permission-denied') {
-                    document.getElementById('tabelData').innerHTML = "<tr><td colspan='3' style='color:red'>Izin Ditolak: Cek Rules Firebase Anda.</td></tr>";
-                }
             });
         }
 
@@ -237,27 +211,3 @@
     </script>
 </body>
 </html>
-```
-
-### Cara Memperbaiki Error "Missing Permissions" (Manual)
-
-Jika error masih muncul setelah ganti kode, Anda wajib melakukan ini di **Firebase Console**:
-
-1.  **Aktifkan Login Anonim (Anonymous Auth):**
-    * Buka Firebase Console > Menu **Authentication**.
-    * Klik tab **Sign-in method**.
-    * Klik **Anonymous** -> Ubah jadi **Enable** -> Simpan.
-
-2.  **Perbaiki Firestore Rules:**
-    * Buka Firebase Console > Menu **Firestore Database**.
-    * Klik tab **Rules**.
-    * Ganti kodenya menjadi seperti ini (Paling Longgar, hanya untuk tes):
-        ```text
-        rules_version = '2';
-        service cloud.firestore {
-          match /databases/{database}/documents {
-            match /{document=**} {
-              allow read, write: if true;
-            }
-          }
-        }
