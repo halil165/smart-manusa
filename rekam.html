@@ -3,7 +3,6 @@
 <head>
     <meta charset="UTF-8">
     <title>Admin - Rekam Wajah</title>
-    <!-- Library AI & Firebase -->
     <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
@@ -12,31 +11,18 @@
     <style>
         body { font-family: sans-serif; text-align: center; padding: 20px; background: #f0f2f5; padding-bottom: 80px; }
         .box { background: white; padding: 20px; border-radius: 10px; display: inline-block; box-shadow: 0 4px 15px rgba(0,0,0,0.1); width: 100%; max-width: 500px; }
-        
         video { width: 100%; border-radius: 8px; background: #000; transform: scaleX(-1); }
-        
         label { display: block; text-align: left; font-weight: bold; margin-top: 10px; color: #555; }
         select { width: 100%; padding: 12px; margin-top: 5px; border: 1px solid #ccc; border-radius: 5px; font-size: 16px; background: #fff; }
-        
         button { width: 100%; padding: 14px; background: #00695c; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; font-size: 16px; margin-top: 15px; }
         button:hover { background: #004d40; }
         button:disabled { background: #ccc; cursor: not-allowed; }
-        
         button.back { background: #6c757d; margin-bottom: 20px; width: 100%; max-width: 500px; }
         button.dl { background: #ffab00; color: black; margin-top: 20px; }
-        
         #log { margin-top: 15px; color: green; font-weight: bold; min-height: 20px; }
         .badge-count { background: #e0f2f1; color: #00695c; padding: 5px 10px; border-radius: 15px; font-size: 12px; font-weight: bold; float: right; }
-        
-        /* Area Status Error */
         #dbStatus { color: red; font-size: 12px; margin-top: 5px; font-weight: bold; display:none; background: #ffebee; padding: 10px; border-radius: 4px; text-align: left; border: 1px solid #ffcdd2;}
-        
-        .running-footer {
-            position: fixed; bottom: 0; left: 0; width: 100%;
-            background: #004d40; color: #fff;
-            padding: 10px 0; font-size: 14px; font-weight: bold;
-            z-index: 1000; box-shadow: 0 -2px 10px rgba(0,0,0,0.2);
-        }
+        .running-footer { position: fixed; bottom: 0; left: 0; width: 100%; background: #004d40; color: #fff; padding: 10px 0; font-size: 14px; font-weight: bold; z-index: 1000; box-shadow: 0 -2px 10px rgba(0,0,0,0.2); }
     </style>
 </head>
 <body>
@@ -46,11 +32,8 @@
     <div class="box">
         <h2>🎥 Rekam Wajah Siswa</h2>
         <div id="loading_ai">⏳ Memuat AI...</div>
-
-        <!-- AREA DETEKSI ERROR -->
         <div id="dbStatus"></div>
 
-        <!-- PILIHAN KELAS -->
         <label>1. Pilih Kelas:</label>
         <select id="pilihKelas" onchange="loadSiswa()">
             <option value="">-- Menunggu Database... --</option>
@@ -61,7 +44,6 @@
             <option value="">-- Pilih Kelas Dulu --</option>
         </select>
 
-        <!-- VIDEO AREA -->
         <div style="margin-top: 15px; position: relative;">
             <video id="video" autoplay muted></video>
         </div>
@@ -79,7 +61,6 @@
         <button onclick="downloadJSON()" class="dl" id="btnDownload" disabled>💾 DOWNLOAD JSON KELAS</button>
     </div>
 
-    <!-- FOOTER -->
     <div class="running-footer">
         <marquee direction="left" scrollamount="6">
             &copy; Layanan Digital By Halil Budiyanto, S.Kom.I
@@ -107,7 +88,6 @@
         window.onload = async () => {
             try { if(sessionStorage.getItem('isAdmin') !== 'true') window.location.href="./index.html"; } catch(e){}
 
-            // Load AI
             try {
                 await Promise.all([
                     faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
@@ -119,7 +99,6 @@
                 startVideo();
             } catch (err) { alert("Gagal Load AI: " + err); }
 
-            // Login Anonim & Load Kelas
             try {
                 await auth.signInAnonymously();
                 loadDaftarKelas();
@@ -130,20 +109,18 @@
 
         function showError(msg) {
             const el = document.getElementById('dbStatus');
-            el.innerHTML = msg;
-            el.style.display = 'block';
+            el.innerHTML = msg; el.style.display = 'block';
         }
 
-        // --- FUNGSI LOAD KELAS ---
+        // --- LOAD DAFTAR KELAS (Dari master_siswa) ---
         async function loadDaftarKelas() {
             const selKelas = document.getElementById('pilihKelas');
             selKelas.innerHTML = "<option>Sedang memuat data...</option>";
             
             try {
                 const snap = await db.collection('master_siswa').limit(200).get();
-                
                 if (snap.empty) {
-                    showError("⚠ Koleksi 'master_siswa' KOSONG. Cek Firebase Console.");
+                    showError("⚠ Koleksi 'master_siswa' KOSONG.");
                     selKelas.innerHTML = "<option value=''>Data Kosong</option>";
                     return;
                 }
@@ -153,98 +130,98 @@
                     const data = doc.data();
                     if(data.kelas) kelasUnik.add(data.kelas);
                     else if(data.nama_kelas) kelasUnik.add(data.nama_kelas);
-                    else if(data.rombel) kelasUnik.add(data.rombel);
-                    else kelasUnik.add(doc.id); // Fallback pakai ID
+                    else kelasUnik.add(doc.id);
                 });
 
                 selKelas.innerHTML = '<option value="">-- Pilih Kelas --</option>';
-                const sorted = Array.from(kelasUnik).sort();
-                
-                sorted.forEach(k => {
+                Array.from(kelasUnik).sort().forEach(k => {
                     let opt = document.createElement('option');
                     opt.value = k; opt.text = k;
                     selKelas.add(opt);
                 });
                 document.getElementById('dbStatus').style.display = 'none';
-
             } catch(e) { 
                 showError("⛔ Error Database: " + e.message);
                 selKelas.innerHTML = "<option>Gagal Koneksi</option>";
             }
         }
 
-        // --- FUNGSI LOAD SISWA (Updated Logic) ---
+        // --- LOAD SISWA (LOGIKA BARU: Cari Kolom Bernama Kelas) ---
         async function loadSiswa() {
-            const kelas = document.getElementById('pilihKelas').value.trim(); // Trim spasi
+            const kelas = document.getElementById('pilihKelas').value.trim();
             const selSiswa = document.getElementById('pilihSiswa');
-            const btnRekam = document.getElementById('btnRekam');
-            const btnDL = document.getElementById('btnDownload');
-
-            selSiswa.innerHTML = "<option>Memuat Siswa...</option>";
-            selSiswa.disabled = true;
-            btnRekam.disabled = true;
             
+            selSiswa.innerHTML = "<option>Mencari Siswa...</option>";
+            selSiswa.disabled = true;
+            document.getElementById('btnRekam').disabled = true;
             descriptors = [];
             document.getElementById('count').innerText = "0 Siswa";
-            btnDL.disabled = true;
             document.getElementById('dbStatus').style.display = 'none';
 
             if(!kelas) return;
 
             try {
-                // Diagnosa: Tampilkan apa yang sedang dicari
-                console.log(`Mencari siswa di 'list_siswa' dengan kelas '${kelas}'`);
-
-                // Ambil dari 'list_siswa'
-                const snap = await db.collection('list_siswa')
-                                     .where('kelas', '==', kelas)
-                                     .get();
-                
-                selSiswa.innerHTML = '<option value="">-- Pilih Nama Siswa --</option>';
+                // 1. Ambil dokumen dari list_siswa
+                // Karena kita tidak tahu ID dokumennya, kita ambil semua (atau limit)
+                const snap = await db.collection('list_siswa').limit(50).get();
                 
                 if(snap.empty) {
-                    showError(`⚠ <b>KOSONG:</b> Tidak ditemukan siswa dengan kelas <b>'${kelas}'</b>.<br>Tips: Cek apakah nama kelas di database 'list_siswa' sama persis (spasi/huruf besar)?`);
-                    selSiswa.innerHTML = '<option>Siswa Kosong</option>';
+                    showError("Koleksi 'list_siswa' kosong.");
+                    selSiswa.innerHTML = '<option>Database Kosong</option>';
                     return;
                 }
 
-                let siswaList = [];
-                let sampleData = null; // Untuk debug
+                let siswaFound = [];
 
+                // 2. Loop dokumen untuk mencari Field yang namanya == Nama Kelas
                 snap.forEach(doc => {
-                    const d = doc.data();
-                    if(!sampleData) sampleData = d; // Ambil 1 contoh
-
-                    // Coba semua kemungkinan nama field
-                    const namaSiswa = d.nama || d.nama_lengkap || d.nama_siswa || d.name;
+                    const data = doc.data();
                     
-                    if(namaSiswa) {
-                        siswaList.push(namaSiswa);
+                    // Cek apakah ada field dengan nama kelas ini?
+                    // Contoh: data['X E 1']
+                    if (data[kelas]) {
+                        // Jika isinya Array (List nama)
+                        if (Array.isArray(data[kelas])) {
+                            siswaFound = data[kelas];
+                        } 
+                        // Jika isinya String (Satu nama - jarang terjadi tapi mungkin)
+                        else if (typeof data[kelas] === 'string') {
+                            siswaFound.push(data[kelas]);
+                        }
+                        // Jika isinya Object/Map
+                        else if (typeof data[kelas] === 'object') {
+                            siswaFound = Object.values(data[kelas]);
+                        }
                     }
                 });
-                
-                // Jika data ada tapi nama null semua
-                if(siswaList.length === 0) {
-                    showError(`⚠ Data ada (${snap.size} doc), tapi kolom Nama tidak ditemukan.<br>Contoh data yang diambil: ${JSON.stringify(sampleData)}`);
+
+                if (siswaFound.length === 0) {
+                    showError(`⚠ Tidak ditemukan kolom bernama <b>'${kelas}'</b> di dalam 'list_siswa'.<br>Pastikan ejaan nama kelas di 'master_siswa' sama persis dengan nama field di 'list_siswa'.`);
+                    selSiswa.innerHTML = '<option>Siswa Tidak Ditemukan</option>';
                     return;
                 }
 
-                // Urutkan Nama A-Z
-                siswaList.sort();
-
-                siswaList.forEach(nama => {
-                    let opt = document.createElement('option');
-                    opt.value = nama; 
-                    opt.text = nama;
-                    selSiswa.add(opt);
+                // 3. Tampilkan di Dropdown
+                selSiswa.innerHTML = '<option value="">-- Pilih Nama Siswa --</option>';
+                siswaFound.sort(); // Urutkan A-Z
+                
+                siswaFound.forEach(nama => {
+                    // Pastikan nama berupa string valid
+                    if(nama && typeof nama === 'string') {
+                        let opt = document.createElement('option');
+                        opt.value = nama; 
+                        opt.text = nama;
+                        selSiswa.add(opt);
+                    }
                 });
 
                 selSiswa.disabled = false;
-                selSiswa.onchange = () => { btnRekam.disabled = (selSiswa.value === ""); };
+                selSiswa.onchange = () => { 
+                    document.getElementById('btnRekam').disabled = (selSiswa.value === ""); 
+                };
 
             } catch(e) { 
-                showError("Gagal ambil siswa: " + e.message);
-                if(e.message.includes("index")) alert("⚠️ ERROR INDEX: Buka link di Console (F12) untuk membuat index Firebase.");
+                showError("Error Load Siswa: " + e.message);
             }
         }
 
@@ -257,18 +234,16 @@
 
         async function ambilSampel() {
             const nama = document.getElementById('pilihSiswa').value;
-            if(!nama) return alert("Pilih Nama Siswa dulu!");
-
             const video = document.getElementById('video');
             const log = document.getElementById('log');
+            
+            if(!nama) return alert("Pilih Nama Siswa dulu!");
             log.innerText = "Mendeteksi wajah..."; log.style.color = "orange";
 
-            // Gunakan TinyFaceDetector agar lebih cepat di HP
-            const det = await faceapi.detectSingleFace(video, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks().withFaceDescriptor();
+            const det = await faceapi.detectSingleFace(video, new faceapi.SsdMobilenetv1Options()).withFaceLandmarks().withFaceDescriptor();
 
             if (det) {
                 const existingIndex = descriptors.findIndex(d => d.label === nama);
-                
                 if(existingIndex !== -1) {
                     descriptors[existingIndex] = { label: nama, descriptors: [Array.from(det.descriptor)] };
                     log.innerText = `✅ Data ${nama} diperbarui!`;
@@ -276,26 +251,20 @@
                     descriptors.push({ label: nama, descriptors: [Array.from(det.descriptor)] });
                     log.innerText = `✅ Berhasil merekam: ${nama}`;
                 }
-                
                 log.style.color = "green";
                 document.getElementById('count').innerText = descriptors.length + " Siswa";
                 document.getElementById('btnDownload').disabled = false;
-                
-                // Reset Pilihan
-                document.getElementById('pilihSiswa').value = "";
+                document.getElementById('pilihSiswa').value = ""; // Reset
                 document.getElementById('btnRekam').disabled = true;
-
             } else {
-                log.innerText = "❌ Wajah tidak terdeteksi. Dekatkan wajah ke kamera."; log.style.color = "red";
+                log.innerText = "❌ Wajah tidak terdeteksi."; log.style.color = "red";
             }
         }
 
         function downloadJSON() {
             if(descriptors.length === 0) return alert("Belum ada data!");
-            
             const kelas = document.getElementById('pilihKelas').value;
             const namaFile = kelas.replace(/\s+/g, '-') + ".json";
-
             const a = document.createElement('a');
             a.href = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(descriptors));
             a.download = namaFile;
