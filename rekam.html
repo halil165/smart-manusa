@@ -2,71 +2,106 @@
 <html lang="id">
 <head>
     <meta charset="UTF-8">
-    <title>Admin - Rekam Wajah</title>
+    <title>Admin - Kelola Wajah</title>
+    <!-- Library AI & Firebase -->
     <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
     <style>
-        body { font-family: sans-serif; text-align: center; padding: 20px; background: #f0f2f5; padding-bottom: 80px; }
-        .box { background: white; padding: 20px; border-radius: 10px; display: inline-block; box-shadow: 0 4px 15px rgba(0,0,0,0.1); width: 100%; max-width: 500px; }
-        video { width: 100%; border-radius: 8px; background: #000; transform: scaleX(-1); }
+        body { font-family: 'Segoe UI', sans-serif; text-align: center; padding: 20px; background: #f0f2f5; padding-bottom: 80px; }
+        .container { max-width: 800px; margin: 0 auto; }
+        
+        .box { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        
+        video { width: 100%; max-width: 400px; border-radius: 8px; background: #000; transform: scaleX(-1); border: 3px solid #ddd; }
+        
         label { display: block; text-align: left; font-weight: bold; margin-top: 10px; color: #555; }
-        select { width: 100%; padding: 12px; margin-top: 5px; border: 1px solid #ccc; border-radius: 5px; font-size: 16px; background: #fff; }
-        button { width: 100%; padding: 14px; background: #00695c; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; font-size: 16px; margin-top: 15px; }
-        button:hover { background: #004d40; }
-        button:disabled { background: #ccc; cursor: not-allowed; }
-        button.back { background: #6c757d; margin-bottom: 20px; width: 100%; max-width: 500px; }
-        button.dl { background: #ffab00; color: black; margin-top: 20px; }
-        #log { margin-top: 15px; color: green; font-weight: bold; min-height: 20px; }
-        .badge-count { background: #e0f2f1; color: #00695c; padding: 5px 10px; border-radius: 15px; font-size: 12px; font-weight: bold; float: right; }
+        select { width: 100%; padding: 12px; margin-top: 5px; border: 1px solid #ccc; border-radius: 6px; font-size: 16px; background: #fff; }
+        
+        button { width: 100%; padding: 14px; background: #00695c; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 16px; margin-top: 15px; transition: 0.3s; }
+        button:hover { background: #004d40; transform: translateY(-2px); }
+        button:disabled { background: #ccc; cursor: not-allowed; transform: none; }
+        
+        .btn-back { background: #546e7a; margin-bottom: 15px; width: auto; padding: 10px 20px; float: left; }
+        .btn-del { background: #d32f2f; padding: 5px 10px; font-size: 12px; width: auto; margin: 0; }
+        
+        #log { margin-top: 10px; font-weight: bold; min-height: 20px; }
+        
+        /* Tabel Data Wajah */
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { padding: 10px; border-bottom: 1px solid #eee; text-align: left; }
+        th { background: #e0f2f1; color: #00695c; }
+        
         .running-footer { position: fixed; bottom: 0; left: 0; width: 100%; background: #004d40; color: #fff; padding: 10px 0; font-size: 14px; font-weight: bold; z-index: 1000; }
     </style>
 </head>
 <body>
 
-    <button class="back" onclick="location.href='admin_menu.html'">⬅ Kembali ke Menu Admin</button>
-    
+<div class="container">
+    <button class="btn-back" onclick="location.href='admin_menu.html'">⬅ Menu Admin</button>
+    <div style="clear:both;"></div>
+
+    <!-- AREA REKAM -->
     <div class="box">
-        <h2>🎥 Rekam Wajah Siswa</h2>
+        <h2 style="margin-top:0; color:#00695c;">🎥 Rekam Wajah Otomatis</h2>
         <div id="loading_ai">⏳ Memuat AI...</div>
+        <div id="dbStatus" style="color:red; display:none;"></div>
 
-        <label>1. Pilih Kelas:</label>
-        <select id="pilihKelas" onchange="loadSiswa()">
-            <option value="">-- Menunggu Database... --</option>
-        </select>
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 10px; text-align: left;">
+            <div>
+                <label>1. Pilih Kelas:</label>
+                <select id="pilihKelas" onchange="gantiKelas()">
+                    <option value="">-- Loading... --</option>
+                </select>
+            </div>
+            <div>
+                <label>2. Pilih Siswa:</label>
+                <select id="pilihSiswa" disabled>
+                    <option value="">-- Pilih Kelas Dulu --</option>
+                </select>
+            </div>
+        </div>
 
-        <label>2. Pilih Nama Siswa:</label>
-        <select id="pilihSiswa" disabled>
-            <option value="">-- Pilih Kelas Dulu --</option>
-        </select>
-
-        <div style="margin-top: 15px; position: relative;">
+        <div style="margin-top: 15px;">
             <video id="video" autoplay muted></video>
         </div>
 
-        <button onclick="ambilSampel()" id="btnRekam" disabled>📸 REKAM WAJAH</button>
-        
+        <button onclick="ambilSampel()" id="btnRekam" disabled>📸 REKAM & SIMPAN OTOMATIS</button>
         <div id="log"></div>
-        <hr style="margin: 20px 0; border: 0; border-top: 1px solid #eee;">
-        
-        <div style="text-align: left;">
-            <span style="font-weight: bold;">Data Tersimpan:</span>
-            <span id="count" class="badge-count">0 Siswa</span>
-        </div>
-        
-        <button onclick="downloadJSON()" class="dl" id="btnDownload" disabled>💾 DOWNLOAD JSON KELAS</button>
     </div>
 
-    <div class="running-footer">
-        <marquee direction="left" scrollamount="6">
-            &copy; Layanan Digital By Halil Budiyanto, S.Kom.I
-        </marquee>
+    <!-- AREA LIST DATA -->
+    <div class="box">
+        <h3 style="margin:0; color:#00695c; display:flex; justify-content:space-between;">
+            <span>📂 Data Wajah Tersimpan</span>
+            <span id="jmlData" style="font-size:14px; background:#b2dfdb; padding:2px 8px; border-radius:10px;">0 Siswa</span>
+        </h3>
+        <p style="font-size:12px; color:#666; margin-bottom:10px;">Data ini langsung tersimpan di Cloud Database.</p>
+        
+        <table id="tabelWajah">
+            <thead>
+                <tr>
+                    <th>No</th>
+                    <th>Nama Siswa</th>
+                    <th>Aksi</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr><td colspan="3" style="text-align:center;">Belum ada data wajah di kelas ini.</td></tr>
+            </tbody>
+        </table>
     </div>
+</div>
 
-    <script>
-        // --- 1. CONFIG FIREBASE ---
+<div class="running-footer">
+    <marquee direction="left" scrollamount="6">&copy; Layanan Digital By Halil Budiyanto, S.Kom.I</marquee>
+</div>
+
+<script>
+    // --- 1. CONFIG FIREBASE (WAJIB GANTI) ---
   const firebaseConfig = {
       apiKey: "AIzaSyBWNPcSAzQ_DC5bgXMfC6A3e2QkNMBmimw",
       authDomain: "sapamanusa.firebaseapp.com",
@@ -75,167 +110,216 @@
       messagingSenderId: "1018203726618",
       appId: "1:1018203726618:web:e1715826ad005680c242a3"
   };
+    
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+    const auth = firebase.auth();
+
+    const MODEL_URL = 'https://justadudewhohacks.github.io/face-api.js/models';
+    let dataWajahKelas = []; // Menyimpan data wajah lokal sementara
+
+    // --- 2. INITIALIZE ---
+    window.onload = async () => {
+        try { if(sessionStorage.getItem('isAdmin') !== 'true') window.location.href="./index.html"; } catch(e){}
+
+        // Load AI
+        try {
+            await Promise.all([
+                faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+                faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
+                faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL),
+                faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL)
+            ]);
+            document.getElementById('loading_ai').style.display = 'none';
+            startVideo();
+        } catch (err) { alert("Gagal Load AI: " + err); }
+
+        // Login DB
+        try {
+            await auth.signInAnonymously();
+            loadDaftarKelas();
+        } catch(e) { document.getElementById('dbStatus').innerText = "DB Error: " + e.message; }
+    };
+
+    // --- 3. LOGIKA LOAD DATA ---
+    async function loadDaftarKelas() {
+        const selKelas = document.getElementById('pilihKelas');
+        try {
+            const snap = await db.collection('master_siswa').limit(200).get();
+            let kelasList = [];
+            snap.forEach(doc => kelasList.push(doc.id));
+            
+            selKelas.innerHTML = '<option value="">-- Pilih Kelas --</option>';
+            kelasList.sort().forEach(k => {
+                selKelas.add(new Option(k, k));
+            });
+        } catch(e) { alert("Gagal load kelas"); }
+    }
+
+    async function gantiKelas() {
+        const kelas = document.getElementById('pilihKelas').value;
+        const selSiswa = document.getElementById('pilihSiswa');
         
-        firebase.initializeApp(firebaseConfig);
-        const db = firebase.firestore();
-        const auth = firebase.auth();
+        selSiswa.innerHTML = "<option>Memuat...</option>";
+        selSiswa.disabled = true;
+        document.getElementById('btnRekam').disabled = true;
 
-        const MODEL_URL = 'https://justadudewhohacks.github.io/face-api.js/models';
-        let descriptors = [];
+        if(!kelas) return;
 
-        window.onload = async () => {
-            try { if(sessionStorage.getItem('isAdmin') !== 'true') window.location.href="./index.html"; } catch(e){}
-
-            // Load AI
-            try {
-                await Promise.all([
-                    faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
-                    faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
-                    faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL),
-                    faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL)
-                ]);
-                document.getElementById('loading_ai').style.display = 'none';
-                startVideo();
-            } catch (err) { alert("Gagal Load AI: " + err); }
-
-            // Login Database & Load Kelas
-            try {
-                await auth.signInAnonymously();
-                loadDaftarKelas();
-            } catch(e) { alert("DB Error: " + e.message); }
-        };
-
-        // --- LOAD KELAS (DARI COLLECTION master_siswa) ---
-        async function loadDaftarKelas() {
-            const selKelas = document.getElementById('pilihKelas');
-            selKelas.innerHTML = "<option>Sedang memuat data...</option>";
+        // 1. Load Daftar Nama Siswa (Dropdown)
+        try {
+            const docRef = db.collection('master_siswa').doc(kelas);
+            const docSnap = await docRef.get();
             
-            try {
-                // Ambil semua dokumen di 'master_siswa'
-                const snap = await db.collection('master_siswa').get();
-                
-                if (snap.empty) {
-                    selKelas.innerHTML = "<option value=''>Data Kosong</option>";
-                    return;
-                }
-
-                let kelasList = [];
-                snap.forEach(doc => {
-                    // ID Dokumen adalah Nama Kelas (misal: X TE A)
-                    kelasList.push(doc.id); 
+            selSiswa.innerHTML = '<option value="">-- Pilih Nama --</option>';
+            if(docSnap.exists) {
+                const list = docSnap.data().list_siswa || [];
+                list.sort().forEach((nama, idx) => {
+                    selSiswa.add(new Option(`${idx+1}. ${nama}`, nama));
                 });
-
-                selKelas.innerHTML = '<option value="">-- Pilih Kelas --</option>';
-                kelasList.sort().forEach(k => {
-                    let opt = document.createElement('option');
-                    opt.value = k; opt.text = k;
-                    selKelas.add(opt);
-                });
-
-            } catch(e) { 
-                alert("Error DB: " + e.message);
-                selKelas.innerHTML = "<option>Gagal Koneksi</option>";
-            }
-        }
-
-        // --- LOAD SISWA (DARI DOC master_siswa/NAMAKELAS) ---
-        async function loadSiswa() {
-            const kelas = document.getElementById('pilihKelas').value;
-            const selSiswa = document.getElementById('pilihSiswa');
-            
-            selSiswa.innerHTML = "<option>Memuat Siswa...</option>";
-            selSiswa.disabled = true;
-            document.getElementById('btnRekam').disabled = true;
-            descriptors = [];
-            document.getElementById('count').innerText = "0 Siswa";
-
-            if(!kelas) return;
-
-            try {
-                // Ambil dokumen spesifik berdasarkan Nama Kelas
-                const docRef = db.collection('master_siswa').doc(kelas);
-                const docSnap = await docRef.get();
-                
-                if (!docSnap.exists) {
-                    alert("Kelas tidak ditemukan!");
-                    return;
-                }
-
-                // Ambil field 'list_siswa' (Array of String)
-                const data = docSnap.data();
-                const listSiswa = data.list_siswa || []; // Array ["ADI", "BUDI"]
-
-                if(listSiswa.length === 0) {
-                    selSiswa.innerHTML = '<option>Siswa Kosong</option>';
-                    return;
-                }
-
-                selSiswa.innerHTML = '<option value="">-- Pilih Nama Siswa --</option>';
-                
-                // Urutkan & Tampilkan
-                listSiswa.sort();
-                listSiswa.forEach((nama, index) => {
-                    let opt = document.createElement('option');
-                    opt.value = nama; 
-                    opt.text = `${index + 1}. ${nama}`; 
-                    selSiswa.add(opt);
-                });
-
                 selSiswa.disabled = false;
-                selSiswa.onchange = () => { 
-                    document.getElementById('btnRekam').disabled = (selSiswa.value === ""); 
-                };
-
-            } catch(e) { 
-                alert("Error Load Siswa: " + e.message);
             }
-        }
+        } catch(e) { console.error(e); }
 
-        async function startVideo() {
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({ video: {} });
-                document.getElementById('video').srcObject = stream;
-            } catch(e) { alert("Kamera Error: " + e); }
-        }
+        // 2. Load Data Wajah yang SUDAH TERSIMPAN (Untuk Tabel)
+        loadDataWajahTersimpan(kelas);
+    }
 
-        async function ambilSampel() {
-            const nama = document.getElementById('pilihSiswa').value;
-            if(!nama) return alert("Pilih Nama Siswa dulu!");
+    // --- 4. CRUD FIRESTORE (INTI FITUR BARU) ---
+    async function loadDataWajahTersimpan(kelas) {
+        const tbody = document.querySelector('#tabelWajah tbody');
+        tbody.innerHTML = "<tr><td colspan='3'>Mengambil data...</td></tr>";
+        
+        try {
+            const docRef = db.collection('data_wajah').doc(kelas);
+            const docSnap = await docRef.get();
 
-            const video = document.getElementById('video');
-            const log = document.getElementById('log');
-            log.innerText = "Mendeteksi wajah..."; log.style.color = "orange";
-
-            const det = await faceapi.detectSingleFace(video, new faceapi.SsdMobilenetv1Options()).withFaceLandmarks().withFaceDescriptor();
-
-            if (det) {
-                const existingIndex = descriptors.findIndex(d => d.label === nama);
-                if(existingIndex !== -1) {
-                    descriptors[existingIndex] = { label: nama, descriptors: [Array.from(det.descriptor)] };
-                    log.innerText = `✅ Data ${nama} diperbarui!`;
-                } else {
-                    descriptors.push({ label: nama, descriptors: [Array.from(det.descriptor)] });
-                    log.innerText = `✅ Berhasil merekam: ${nama}`;
-                }
-                log.style.color = "green";
-                document.getElementById('count').innerText = descriptors.length + " Siswa";
-                document.getElementById('btnDownload').disabled = false;
-                document.getElementById('pilihSiswa').value = ""; 
-                document.getElementById('btnRekam').disabled = true;
+            if (docSnap.exists && docSnap.data().faces) {
+                dataWajahKelas = docSnap.data().faces; 
             } else {
-                log.innerText = "❌ Wajah tidak terdeteksi."; log.style.color = "red";
+                dataWajahKelas = [];
             }
+            renderTabel();
+
+        } catch (e) {
+            tbody.innerHTML = `<tr><td colspan='3' style='color:red'>Error: ${e.message}</td></tr>`;
+        }
+    }
+
+    function renderTabel() {
+        const tbody = document.querySelector('#tabelWajah tbody');
+        const count = document.getElementById('jmlData');
+        
+        tbody.innerHTML = "";
+        count.innerText = dataWajahKelas.length + " Siswa";
+
+        if(dataWajahKelas.length === 0) {
+            tbody.innerHTML = "<tr><td colspan='3' style='text-align:center; color:#999;'>Belum ada data wajah tersimpan.</td></tr>";
+            return;
         }
 
-        function downloadJSON() {
-            if(descriptors.length === 0) return alert("Belum ada data!");
-            const kelas = document.getElementById('pilihKelas').value;
-            const namaFile = kelas.replace(/\s+/g, '-') + ".json";
-            const a = document.createElement('a');
-            a.href = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(descriptors));
-            a.download = namaFile;
-            document.body.appendChild(a); a.click(); a.remove();
+        // Urutkan berdasarkan nama
+        dataWajahKelas.sort((a, b) => a.label.localeCompare(b.label));
+
+        dataWajahKelas.forEach((item, index) => {
+            const row = `
+                <tr>
+                    <td>${index + 1}</td>
+                    <td><b>${item.label}</b></td>
+                    <td>
+                        <button class="btn-del" onclick="hapusWajah('${item.label}')">
+                            <i class="fa-solid fa-trash"></i> Hapus
+                        </button>
+                    </td>
+                </tr>
+            `;
+            tbody.innerHTML += row;
+        });
+    }
+
+    // --- 5. LOGIKA REKAM & SIMPAN OTOMATIS ---
+    async function ambilSampel() {
+        const nama = document.getElementById('pilihSiswa').value;
+        const kelas = document.getElementById('pilihKelas').value;
+        const btn = document.getElementById('btnRekam');
+        const log = document.getElementById('log');
+
+        if(!nama || !kelas) return alert("Pilih Kelas dan Siswa!");
+
+        log.innerText = "Mendeteksi..."; log.style.color = "orange";
+        btn.disabled = true;
+
+        const video = document.getElementById('video');
+        const det = await faceapi.detectSingleFace(video, new faceapi.SsdMobilenetv1Options()).withFaceLandmarks().withFaceDescriptor();
+
+        if (det) {
+            log.innerText = "Menyimpan ke Cloud...";
+            
+            const descriptorArray = Array.from(det.descriptor);
+
+            // Cek Update atau Baru
+            const existingIndex = dataWajahKelas.findIndex(d => d.label === nama);
+            if(existingIndex !== -1) {
+                dataWajahKelas[existingIndex] = { label: nama, descriptors: [descriptorArray] };
+            } else {
+                dataWajahKelas.push({ label: nama, descriptors: [descriptorArray] });
+            }
+
+            // SIMPAN KE FIRESTORE
+            try {
+                await db.collection('data_wajah').doc(kelas).set({
+                    faces: dataWajahKelas,
+                    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                });
+
+                log.innerText = `✅ SUKSES: ${nama} tersimpan!`;
+                log.style.color = "green";
+                renderTabel();
+                document.getElementById('pilihSiswa').value = ""; // Reset dropdown
+
+            } catch(e) {
+                log.innerText = "❌ Gagal Simpan: " + e.message;
+                log.style.color = "red";
+            }
+
+        } else {
+            log.innerText = "❌ Wajah tidak terdeteksi."; log.style.color = "red";
         }
-    </script>
+        btn.disabled = false;
+    }
+
+    // --- 6. FUNGSI HAPUS ---
+    async function hapusWajah(nama) {
+        const kelas = document.getElementById('pilihKelas').value;
+        if(!confirm(`Yakin ingin menghapus data wajah: ${nama}?`)) return;
+
+        // Hapus dari array lokal
+        dataWajahKelas = dataWajahKelas.filter(item => item.label !== nama);
+
+        // Update ke Firestore
+        try {
+            await db.collection('data_wajah').doc(kelas).set({
+                faces: dataWajahKelas,
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+            });
+            renderTabel();
+            alert("Data berhasil dihapus.");
+        } catch(e) {
+            alert("Gagal menghapus: " + e.message);
+        }
+    }
+
+    // Aktifkan tombol rekam jika siswa dipilih
+    document.getElementById('pilihSiswa').onchange = function() {
+        document.getElementById('btnRekam').disabled = (this.value === "");
+    };
+
+    async function startVideo() {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ video: {} });
+            document.getElementById('video').srcObject = stream;
+        } catch(e) { alert("Kamera Error: " + e); }
+    }
+</script>
 </body>
 </html>
