@@ -135,17 +135,17 @@
             el.style.display = 'block';
         }
 
-        // --- FUNGSI LOAD KELAS ---
+        // --- FUNGSI LOAD KELAS (Dari master_siswa) ---
         async function loadDaftarKelas() {
             const selKelas = document.getElementById('pilihKelas');
             selKelas.innerHTML = "<option>Sedang memuat data...</option>";
             
             try {
-                // 1. Cek 'master_siswa'
-                const snap = await db.collection('master_siswa').limit(100).get();
+                // Ambil semua dokumen di master_siswa
+                const snap = await db.collection('master_siswa').limit(200).get();
                 
                 if (snap.empty) {
-                    showError("⚠ Koleksi 'master_siswa' KOSONG atau tidak ditemukan. Cek Firebase Console.");
+                    showError("⚠ Koleksi 'master_siswa' KOSONG. Cek Firebase Console.");
                     selKelas.innerHTML = "<option value=''>Data Kosong</option>";
                     return;
                 }
@@ -153,36 +153,37 @@
                 let kelasUnik = new Set();
                 let fieldFound = false;
 
-                // 2. Ambil data kelas
                 snap.forEach(doc => {
                     const data = doc.data();
                     
-                    // Cek nama field yang mungkin dipakai
+                    // Cek berbagai kemungkinan nama field untuk kelas
                     if(data.kelas) { kelasUnik.add(data.kelas); fieldFound = true; }
                     else if(data.nama_kelas) { kelasUnik.add(data.nama_kelas); fieldFound = true; }
                     else if(data.rombel) { kelasUnik.add(data.rombel); fieldFound = true; }
+                    else {
+                        // Jika tidak ada field khusus, gunakan ID Dokumen sebagai Nama Kelas
+                        // Contoh: dokumen bernama "X E 1"
+                        kelasUnik.add(doc.id); 
+                        fieldFound = true;
+                    }
                 });
 
                 if(!fieldFound) {
-                    showError("⚠ Data ditemukan tapi kolom 'kelas' tidak ada. Cek nama field di database.");
+                    showError("⚠ Format data kelas tidak dikenali.");
                     selKelas.innerHTML = "<option value=''>Format Salah</option>";
                     return;
                 }
 
-                // 3. Masukkan ke Dropdown
+                // Masukkan ke Dropdown
                 selKelas.innerHTML = '<option value="">-- Pilih Kelas --</option>';
                 const sorted = Array.from(kelasUnik).sort();
                 
-                if(sorted.length === 0) {
-                    selKelas.innerHTML = "<option>Tidak ada kelas unik</option>";
-                } else {
-                    sorted.forEach(k => {
-                        let opt = document.createElement('option');
-                        opt.value = k; opt.text = k;
-                        selKelas.add(opt);
-                    });
-                    document.getElementById('dbStatus').style.display = 'none'; // Sembunyikan error jika sukses
-                }
+                sorted.forEach(k => {
+                    let opt = document.createElement('option');
+                    opt.value = k; opt.text = k;
+                    selKelas.add(opt);
+                });
+                document.getElementById('dbStatus').style.display = 'none';
 
             } catch(e) { 
                 showError("⛔ Error Database: " + e.message);
@@ -190,7 +191,7 @@
             }
         }
 
-        // --- FUNGSI LOAD SISWA ---
+        // --- FUNGSI LOAD SISWA (Tanpa NIS, Dari list_siswa) ---
         async function loadSiswa() {
             const kelas = document.getElementById('pilihKelas').value;
             const selSiswa = document.getElementById('pilihSiswa');
@@ -208,28 +209,34 @@
             if(!kelas) return;
 
             try {
-                // Ambil dari 'list_siswa'
+                // Filter berdasarkan kelas
                 const snap = await db.collection('list_siswa')
                                      .where('kelas', '==', kelas)
-                                     .get(); // Hapus orderBy sementara jika belum di-index
+                                     .get();
                 
                 selSiswa.innerHTML = '<option value="">-- Pilih Nama Siswa --</option>';
                 
                 if(snap.empty) {
-                    showError(`Tidak ada siswa di kelas ${kelas} pada koleksi 'list_siswa'.`);
+                    showError(`Tidak ada siswa di kelas ${kelas}.`);
                     selSiswa.innerHTML = '<option>Siswa Kosong</option>';
                     return;
                 }
 
-                // Sort Manual di Client (biar tidak error index)
                 let siswaList = [];
-                snap.forEach(doc => siswaList.push(doc.data()));
-                siswaList.sort((a, b) => a.nama.localeCompare(b.nama));
+                snap.forEach(doc => {
+                    const d = doc.data();
+                    // Ambil field 'nama' atau 'nama_lengkap' atau 'nama_siswa'
+                    const namaSiswa = d.nama || d.nama_lengkap || d.nama_siswa || "Tanpa Nama";
+                    siswaList.push(namaSiswa);
+                });
+                
+                // Urutkan Nama A-Z
+                siswaList.sort();
 
-                siswaList.forEach(data => {
+                siswaList.forEach(nama => {
                     let opt = document.createElement('option');
-                    opt.value = data.nama; 
-                    opt.text = data.nama;
+                    opt.value = nama; 
+                    opt.text = nama;
                     selSiswa.add(opt);
                 });
 
@@ -239,7 +246,8 @@
 
             } catch(e) { 
                 showError("Gagal ambil siswa: " + e.message);
-                if(e.message.includes("index")) alert("Perlu membuat Index di Firebase. Cek Console Link.");
+                // Jika error index, beritahu cara fix-nya
+                if(e.message.includes("index")) alert("⚠️ ERROR INDEX: Buka link di Console (F12) untuk membuat index Firebase.");
             }
         }
 
@@ -258,10 +266,13 @@
             const log = document.getElementById('log');
             log.innerText = "Mendeteksi wajah..."; log.style.color = "orange";
 
+            // Deteksi Wajah
             const det = await faceapi.detectSingleFace(video, new faceapi.SsdMobilenetv1Options()).withFaceLandmarks().withFaceDescriptor();
 
             if (det) {
+                // Simpan data wajah (Label = Nama Langsung)
                 const existingIndex = descriptors.findIndex(d => d.label === nama);
+                
                 if(existingIndex !== -1) {
                     descriptors[existingIndex] = { label: nama, descriptors: [Array.from(det.descriptor)] };
                     log.innerText = `✅ Data ${nama} diperbarui!`;
@@ -269,9 +280,15 @@
                     descriptors.push({ label: nama, descriptors: [Array.from(det.descriptor)] });
                     log.innerText = `✅ Berhasil merekam: ${nama}`;
                 }
+                
                 log.style.color = "green";
                 document.getElementById('count').innerText = descriptors.length + " Siswa";
                 document.getElementById('btnDownload').disabled = false;
+                
+                // Reset (Agar bisa pilih siswa lain)
+                document.getElementById('pilihSiswa').value = "";
+                document.getElementById('btnRekam').disabled = true;
+
             } else {
                 log.innerText = "❌ Wajah tidak terdeteksi."; log.style.color = "red";
             }
@@ -279,8 +296,11 @@
 
         function downloadJSON() {
             if(descriptors.length === 0) return alert("Belum ada data!");
+            
             const kelas = document.getElementById('pilihKelas').value;
+            // Format Nama File: X-E-1.json (Ganti spasi dengan strip)
             const namaFile = kelas.replace(/\s+/g, '-') + ".json";
+
             const a = document.createElement('a');
             a.href = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(descriptors));
             a.download = namaFile;
