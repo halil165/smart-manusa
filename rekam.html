@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <title>Admin - Rekam Wajah</title>
+    <!-- Library AI & Firebase -->
     <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
@@ -11,18 +12,31 @@
     <style>
         body { font-family: sans-serif; text-align: center; padding: 20px; background: #f0f2f5; padding-bottom: 80px; }
         .box { background: white; padding: 20px; border-radius: 10px; display: inline-block; box-shadow: 0 4px 15px rgba(0,0,0,0.1); width: 100%; max-width: 500px; }
+        
         video { width: 100%; border-radius: 8px; background: #000; transform: scaleX(-1); }
+        
         label { display: block; text-align: left; font-weight: bold; margin-top: 10px; color: #555; }
         select { width: 100%; padding: 12px; margin-top: 5px; border: 1px solid #ccc; border-radius: 5px; font-size: 16px; background: #fff; }
+        
         button { width: 100%; padding: 14px; background: #00695c; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; font-size: 16px; margin-top: 15px; }
         button:hover { background: #004d40; }
         button:disabled { background: #ccc; cursor: not-allowed; }
+        
         button.back { background: #6c757d; margin-bottom: 20px; width: 100%; max-width: 500px; }
         button.dl { background: #ffab00; color: black; margin-top: 20px; }
+        
         #log { margin-top: 15px; color: green; font-weight: bold; min-height: 20px; }
         .badge-count { background: #e0f2f1; color: #00695c; padding: 5px 10px; border-radius: 15px; font-size: 12px; font-weight: bold; float: right; }
+        
+        /* Area Status Error */
         #dbStatus { color: red; font-size: 12px; margin-top: 5px; font-weight: bold; display:none; background: #ffebee; padding: 10px; border-radius: 4px; text-align: left; border: 1px solid #ffcdd2;}
-        .running-footer { position: fixed; bottom: 0; left: 0; width: 100%; background: #004d40; color: #fff; padding: 10px 0; font-size: 14px; font-weight: bold; z-index: 1000; box-shadow: 0 -2px 10px rgba(0,0,0,0.2); }
+        
+        .running-footer {
+            position: fixed; bottom: 0; left: 0; width: 100%;
+            background: #004d40; color: #fff;
+            padding: 10px 0; font-size: 14px; font-weight: bold;
+            z-index: 1000; box-shadow: 0 -2px 10px rgba(0,0,0,0.2);
+        }
     </style>
 </head>
 <body>
@@ -32,8 +46,11 @@
     <div class="box">
         <h2>🎥 Rekam Wajah Siswa</h2>
         <div id="loading_ai">⏳ Memuat AI...</div>
+
+        <!-- AREA DETEKSI ERROR -->
         <div id="dbStatus"></div>
 
+        <!-- PILIHAN KELAS -->
         <label>1. Pilih Kelas:</label>
         <select id="pilihKelas" onchange="loadSiswa()">
             <option value="">-- Menunggu Database... --</option>
@@ -44,6 +61,7 @@
             <option value="">-- Pilih Kelas Dulu --</option>
         </select>
 
+        <!-- VIDEO AREA -->
         <div style="margin-top: 15px; position: relative;">
             <video id="video" autoplay muted></video>
         </div>
@@ -61,6 +79,7 @@
         <button onclick="downloadJSON()" class="dl" id="btnDownload" disabled>💾 DOWNLOAD JSON KELAS</button>
     </div>
 
+    <!-- FOOTER -->
     <div class="running-footer">
         <marquee direction="left" scrollamount="6">
             &copy; Layanan Digital By Halil Budiyanto, S.Kom.I
@@ -77,7 +96,6 @@
       messagingSenderId: "1018203726618",
       appId: "1:1018203726618:web:e1715826ad005680c242a3"
   };
-        
         firebase.initializeApp(firebaseConfig);
         const db = firebase.firestore();
         const auth = firebase.auth();
@@ -86,8 +104,10 @@
         let descriptors = [];
 
         window.onload = async () => {
+            // Cek Login Admin
             try { if(sessionStorage.getItem('isAdmin') !== 'true') window.location.href="./index.html"; } catch(e){}
 
+            // Load AI
             try {
                 await Promise.all([
                     faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
@@ -99,6 +119,7 @@
                 startVideo();
             } catch (err) { alert("Gagal Load AI: " + err); }
 
+            // Login Anonim & Load Kelas
             try {
                 await auth.signInAnonymously();
                 loadDaftarKelas();
@@ -109,16 +130,18 @@
 
         function showError(msg) {
             const el = document.getElementById('dbStatus');
-            el.innerHTML = msg; el.style.display = 'block';
+            el.innerHTML = msg;
+            el.style.display = 'block';
         }
 
-        // --- LOAD DAFTAR KELAS (Dari master_siswa) ---
+        // --- FUNGSI LOAD KELAS (Dari master_siswa) ---
         async function loadDaftarKelas() {
             const selKelas = document.getElementById('pilihKelas');
             selKelas.innerHTML = "<option>Sedang memuat data...</option>";
             
             try {
                 const snap = await db.collection('master_siswa').limit(200).get();
+                
                 if (snap.empty) {
                     showError("⚠ Koleksi 'master_siswa' KOSONG.");
                     selKelas.innerHTML = "<option value=''>Data Kosong</option>";
@@ -130,25 +153,28 @@
                     const data = doc.data();
                     if(data.kelas) kelasUnik.add(data.kelas);
                     else if(data.nama_kelas) kelasUnik.add(data.nama_kelas);
-                    else kelasUnik.add(doc.id);
+                    else kelasUnik.add(doc.id); // Fallback ID
                 });
 
                 selKelas.innerHTML = '<option value="">-- Pilih Kelas --</option>';
-                Array.from(kelasUnik).sort().forEach(k => {
+                const sorted = Array.from(kelasUnik).sort();
+                
+                sorted.forEach(k => {
                     let opt = document.createElement('option');
                     opt.value = k; opt.text = k;
                     selKelas.add(opt);
                 });
                 document.getElementById('dbStatus').style.display = 'none';
+
             } catch(e) { 
                 showError("⛔ Error Database: " + e.message);
                 selKelas.innerHTML = "<option>Gagal Koneksi</option>";
             }
         }
 
-        // --- LOAD SISWA (LOGIKA BARU: Cari Kolom Bernama Kelas) ---
+        // --- FUNGSI LOAD SISWA (LOGIKA BARU: Cari Kolom Bernama Kelas) ---
         async function loadSiswa() {
-            const kelas = document.getElementById('pilihKelas').value.trim();
+            const kelas = document.getElementById('pilihKelas').value.trim(); // Trim spasi
             const selSiswa = document.getElementById('pilihSiswa');
             
             selSiswa.innerHTML = "<option>Mencari Siswa...</option>";
@@ -190,6 +216,7 @@
                         }
                         // Jika isinya Object/Map
                         else if (typeof data[kelas] === 'object') {
+                            // Jika formatnya { '0': 'Ali', '1': 'Budi' }
                             siswaFound = Object.values(data[kelas]);
                         }
                     }
@@ -234,10 +261,10 @@
 
         async function ambilSampel() {
             const nama = document.getElementById('pilihSiswa').value;
+            if(!nama) return alert("Pilih Nama Siswa dulu!");
+
             const video = document.getElementById('video');
             const log = document.getElementById('log');
-            
-            if(!nama) return alert("Pilih Nama Siswa dulu!");
             log.innerText = "Mendeteksi wajah..."; log.style.color = "orange";
 
             const det = await faceapi.detectSingleFace(video, new faceapi.SsdMobilenetv1Options()).withFaceLandmarks().withFaceDescriptor();
