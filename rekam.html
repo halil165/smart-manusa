@@ -56,6 +56,7 @@
             <option value="">-- Menunggu Database... --</option>
         </select>
 
+        <!-- PILIHAN SISWA -->
         <label>2. Pilih Nama Siswa:</label>
         <select id="pilihSiswa" disabled>
             <option value="">-- Pilih Kelas Dulu --</option>
@@ -96,6 +97,7 @@
       messagingSenderId: "1018203726618",
       appId: "1:1018203726618:web:e1715826ad005680c242a3"
   };
+        
         firebase.initializeApp(firebaseConfig);
         const db = firebase.firestore();
         const auth = firebase.auth();
@@ -140,10 +142,11 @@
             selKelas.innerHTML = "<option>Sedang memuat data...</option>";
             
             try {
+                // 1. Ambil data dari master_siswa untuk mengisi dropdown
                 const snap = await db.collection('master_siswa').limit(200).get();
                 
                 if (snap.empty) {
-                    showError("⚠ Koleksi 'master_siswa' KOSONG.");
+                    showError("⚠ Koleksi 'master_siswa' KOSONG. Cek Firebase Console.");
                     selKelas.innerHTML = "<option value=''>Data Kosong</option>";
                     return;
                 }
@@ -151,9 +154,11 @@
                 let kelasUnik = new Set();
                 snap.forEach(doc => {
                     const data = doc.data();
+                    // Cek berbagai kemungkinan nama field
                     if(data.kelas) kelasUnik.add(data.kelas);
                     else if(data.nama_kelas) kelasUnik.add(data.nama_kelas);
-                    else kelasUnik.add(doc.id); // Fallback ID
+                    else if(data.rombel) kelasUnik.add(data.rombel);
+                    else kelasUnik.add(doc.id); // Jika nama kelas adalah ID dokumen
                 });
 
                 selKelas.innerHTML = '<option value="">-- Pilih Kelas --</option>';
@@ -172,72 +177,80 @@
             }
         }
 
-        // --- FUNGSI LOAD SISWA (LOGIKA BARU: Cari Kolom Bernama Kelas) ---
+        // --- FUNGSI LOAD SISWA (LOGIKA DINAMIS: FIELD = KELAS) ---
         async function loadSiswa() {
-            const kelas = document.getElementById('pilihKelas').value.trim(); // Trim spasi
+            const kelasDipilih = document.getElementById('pilihKelas').value.trim();
             const selSiswa = document.getElementById('pilihSiswa');
-            
-            selSiswa.innerHTML = "<option>Mencari Siswa...</option>";
+            const btnRekam = document.getElementById('btnRekam');
+            const btnDL = document.getElementById('btnDownload');
+
+            selSiswa.innerHTML = "<option>Memuat Siswa...</option>";
             selSiswa.disabled = true;
-            document.getElementById('btnRekam').disabled = true;
+            btnRekam.disabled = true;
             descriptors = [];
             document.getElementById('count').innerText = "0 Siswa";
+            btnDL.disabled = true;
             document.getElementById('dbStatus').style.display = 'none';
 
-            if(!kelas) return;
+            if(!kelasDipilih) return;
 
             try {
-                // 1. Ambil dokumen dari list_siswa
-                // Karena kita tidak tahu ID dokumennya, kita ambil semua (atau limit)
+                // Ambil 50 dokumen pertama dari list_siswa
                 const snap = await db.collection('list_siswa').limit(50).get();
                 
-                if(snap.empty) {
+                if (snap.empty) {
                     showError("Koleksi 'list_siswa' kosong.");
                     selSiswa.innerHTML = '<option>Database Kosong</option>';
                     return;
                 }
 
                 let siswaFound = [];
+                let fieldNamesFound = []; // Untuk debug
 
-                // 2. Loop dokumen untuk mencari Field yang namanya == Nama Kelas
                 snap.forEach(doc => {
                     const data = doc.data();
                     
-                    // Cek apakah ada field dengan nama kelas ini?
-                    // Contoh: data['X E 1']
-                    if (data[kelas]) {
+                    // --- LOGIKA UTAMA ---
+                    // Cari Field yang namanya SAMA PERSIS dengan kelasDipilih
+                    // Contoh: Jika pilih "X E 1", cari field data["X E 1"]
+                    
+                    if (data[kelasDipilih]) {
                         // Jika isinya Array (List nama)
-                        if (Array.isArray(data[kelas])) {
-                            siswaFound = data[kelas];
+                        if (Array.isArray(data[kelasDipilih])) {
+                            siswaFound.push(...data[kelasDipilih]);
                         } 
-                        // Jika isinya String (Satu nama - jarang terjadi tapi mungkin)
-                        else if (typeof data[kelas] === 'string') {
-                            siswaFound.push(data[kelas]);
+                        // Jika isinya String (Satu nama)
+                        else if (typeof data[kelasDipilih] === 'string') {
+                            siswaFound.push(data[kelasDipilih]);
                         }
-                        // Jika isinya Object/Map
-                        else if (typeof data[kelas] === 'object') {
-                            // Jika formatnya { '0': 'Ali', '1': 'Budi' }
-                            siswaFound = Object.values(data[kelas]);
-                        }
+                    } else {
+                        // Simpan field yang ada untuk diagnosis error
+                        Object.keys(data).forEach(k => fieldNamesFound.push(k));
                     }
                 });
 
                 if (siswaFound.length === 0) {
-                    showError(`⚠ Tidak ditemukan kolom bernama <b>'${kelas}'</b> di dalam 'list_siswa'.<br>Pastikan ejaan nama kelas di 'master_siswa' sama persis dengan nama field di 'list_siswa'.`);
+                    // Tampilkan pesan error informatif
+                    const sampleKeys = fieldNamesFound.slice(0, 5).join(", ");
+                    showError(`
+                        ⚠ Data tidak ditemukan untuk kelas <b>'${kelasDipilih}'</b>.<br>
+                        Sistem mencari Field bernama: "${kelasDipilih}"<br>
+                        Tetapi Field yang tersedia di database contohnya: "${sampleKeys}..."<br>
+                        Pastikan ejaan Nama Kelas di 'master_siswa' sama persis dengan Nama Field di 'list_siswa'.
+                    `);
                     selSiswa.innerHTML = '<option>Siswa Tidak Ditemukan</option>';
                     return;
                 }
 
-                // 3. Tampilkan di Dropdown
+                // Sukses
                 selSiswa.innerHTML = '<option value="">-- Pilih Nama Siswa --</option>';
-                siswaFound.sort(); // Urutkan A-Z
-                
-                siswaFound.forEach(nama => {
-                    // Pastikan nama berupa string valid
+                let uniqueSiswa = [...new Set(siswaFound)].sort();
+
+                uniqueSiswa.forEach((nama, index) => {
                     if(nama && typeof nama === 'string') {
                         let opt = document.createElement('option');
                         opt.value = nama; 
-                        opt.text = nama;
+                        opt.text = `${index + 1}. ${nama}`; // Tambah Nomor Urut
                         selSiswa.add(opt);
                     }
                 });
@@ -267,10 +280,12 @@
             const log = document.getElementById('log');
             log.innerText = "Mendeteksi wajah..."; log.style.color = "orange";
 
+            // Gunakan SSD MobileNet untuk akurasi tinggi saat training
             const det = await faceapi.detectSingleFace(video, new faceapi.SsdMobilenetv1Options()).withFaceLandmarks().withFaceDescriptor();
 
             if (det) {
                 const existingIndex = descriptors.findIndex(d => d.label === nama);
+                
                 if(existingIndex !== -1) {
                     descriptors[existingIndex] = { label: nama, descriptors: [Array.from(det.descriptor)] };
                     log.innerText = `✅ Data ${nama} diperbarui!`;
@@ -278,20 +293,26 @@
                     descriptors.push({ label: nama, descriptors: [Array.from(det.descriptor)] });
                     log.innerText = `✅ Berhasil merekam: ${nama}`;
                 }
+                
                 log.style.color = "green";
                 document.getElementById('count').innerText = descriptors.length + " Siswa";
                 document.getElementById('btnDownload').disabled = false;
-                document.getElementById('pilihSiswa').value = ""; // Reset
+                
+                // Reset (Agar bisa pilih siswa lain)
+                document.getElementById('pilihSiswa').value = "";
                 document.getElementById('btnRekam').disabled = true;
+
             } else {
-                log.innerText = "❌ Wajah tidak terdeteksi."; log.style.color = "red";
+                log.innerText = "❌ Wajah tidak terdeteksi. Pastikan pencahayaan cukup."; log.style.color = "red";
             }
         }
 
         function downloadJSON() {
             if(descriptors.length === 0) return alert("Belum ada data!");
             const kelas = document.getElementById('pilihKelas').value;
+            // Format Nama File (Ganti Spasi -> Strip)
             const namaFile = kelas.replace(/\s+/g, '-') + ".json";
+
             const a = document.createElement('a');
             a.href = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(descriptors));
             a.download = namaFile;
