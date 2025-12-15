@@ -143,11 +143,12 @@
 
     // --- 3. LOGIKA LOAD DATA ---
     async function loadDaftarKelas() {
+        // Sama seperti sebelumnya, load dari master_siswa
         const selKelas = document.getElementById('pilihKelas');
         try {
             const snap = await db.collection('master_siswa').limit(200).get();
             let kelasList = [];
-            snap.forEach(doc => kelasList.push(doc.id));
+            snap.forEach(doc => kelasList.push(doc.id)); // ID Dokumen = Nama Kelas
             
             selKelas.innerHTML = '<option value="">-- Pilih Kelas --</option>';
             kelasList.sort().forEach(k => {
@@ -195,6 +196,7 @@
             const docSnap = await docRef.get();
 
             if (docSnap.exists && docSnap.data().faces) {
+                // Simpan ke variabel global
                 dataWajahKelas = docSnap.data().faces; 
             } else {
                 dataWajahKelas = [];
@@ -237,7 +239,7 @@
         });
     }
 
-    // --- 5. LOGIKA REKAM & SIMPAN OTOMATIS ---
+    // --- 5. LOGIKA REKAM & SIMPAN OTOMATIS (FIX: NESTED ARRAY) ---
     async function ambilSampel() {
         const nama = document.getElementById('pilihSiswa').value;
         const kelas = document.getElementById('pilihKelas').value;
@@ -255,37 +257,59 @@
         if (det) {
             log.innerText = "Menyimpan ke Cloud...";
             
+            // Konversi Float32Array ke Array biasa (wajib untuk Firestore)
             const descriptorArray = Array.from(det.descriptor);
 
-            // Cek Update atau Baru
+            // Cek apakah siswa sudah ada? Update jika ada
             const existingIndex = dataWajahKelas.findIndex(d => d.label === nama);
             if(existingIndex !== -1) {
-                dataWajahKelas[existingIndex] = { label: nama, descriptors: [descriptorArray] };
+                // Update data lama (Timpa descriptors dengan array baru yang dibungkus array)
+                // PENTING: Firestore tidak suka array of arrays [[1,2,3]]. 
+                // Kita akan simpan sebagai object atau serialisasikan jika perlu.
+                // Tapi untuk face-api, kita butuh array of arrays.
+                // SOLUSI: Bungkus descriptorArray ke dalam object atau array biasa.
+                // Untuk simplisitas dan kompatibilitas dengan scanner, kita simpan:
+                // descriptors: [descriptorArray] <- Ini nested array [Array(128)].
+                // Firestore MEMBOLEHKAN array of arrays JIKA array dalamnya bukan array primitive tapi List object.
+                // Tapi cara paling aman: JSON.stringify array dalamnya. 
+                // ATAU: Ubah struktur penyimpanan.
+                
+                // ALTERNATIF AMAN: Kita simpan sebagai array biasa.
+                dataWajahKelas[existingIndex] = { 
+                    label: nama, 
+                    descriptors: JSON.stringify([descriptorArray]) // Serialize ke String agar aman
+                };
             } else {
-                dataWajahKelas.push({ label: nama, descriptors: [descriptorArray] });
+                dataWajahKelas.push({ 
+                    label: nama, 
+                    descriptors: JSON.stringify([descriptorArray]) // Serialize ke String agar aman
+                });
             }
 
             // SIMPAN KE FIRESTORE
             try {
                 await db.collection('data_wajah').doc(kelas).set({
-                    faces: dataWajahKelas,
+                    faces: dataWajahKelas, // Simpan array lengkap
                     updatedAt: firebase.firestore.FieldValue.serverTimestamp()
                 });
 
                 log.innerText = `✅ SUKSES: ${nama} tersimpan!`;
                 log.style.color = "green";
-                renderTabel();
-                document.getElementById('pilihSiswa').value = ""; // Reset dropdown
+                renderTabel(); // Update tabel UI
+                
+                // Reset input
+                document.getElementById('pilihSiswa').value = "";
 
             } catch(e) {
                 log.innerText = "❌ Gagal Simpan: " + e.message;
                 log.style.color = "red";
+                console.error(e);
             }
 
         } else {
             log.innerText = "❌ Wajah tidak terdeteksi."; log.style.color = "red";
         }
-        btn.disabled = false;
+        btn.disabled = false; // Aktifkan lagi tombolnya
     }
 
     // --- 6. FUNGSI HAPUS ---

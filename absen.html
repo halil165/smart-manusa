@@ -93,7 +93,6 @@
         
         try {
             // LOAD DARI FIRESTORE COLLECTION 'data_wajah'
-            // ID Dokumen = Nama Kelas (Sama persis)
             const docRef = db.collection('data_wajah').doc(namaKelas);
             const docSnap = await docRef.get();
 
@@ -112,7 +111,16 @@
 
             // Convert data dari Firestore ke FaceAPI Matcher
             const labeled = data.map(s => {
-                const floatArray = s.descriptors.map(d => new Float32Array(d));
+                // PARSING JSON KARENA DISIMPAN SEBAGAI STRING
+                let descriptorArray = [];
+                if (typeof s.descriptors === 'string') {
+                    descriptorArray = JSON.parse(s.descriptors); // Parse string ke array
+                } else {
+                    descriptorArray = s.descriptors; // Fallback jika masih array biasa
+                }
+
+                // Map setiap descriptor ke Float32Array
+                const floatArray = descriptorArray.map(d => new Float32Array(d));
                 return new faceapi.LabeledFaceDescriptors(s.label, floatArray);
             });
 
