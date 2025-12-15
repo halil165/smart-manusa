@@ -3,7 +3,6 @@
 <head>
     <meta charset="UTF-8">
     <title>Admin - Rekam Wajah</title>
-    <!-- Library AI & Firebase -->
     <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
@@ -12,31 +11,17 @@
     <style>
         body { font-family: sans-serif; text-align: center; padding: 20px; background: #f0f2f5; padding-bottom: 80px; }
         .box { background: white; padding: 20px; border-radius: 10px; display: inline-block; box-shadow: 0 4px 15px rgba(0,0,0,0.1); width: 100%; max-width: 500px; }
-        
         video { width: 100%; border-radius: 8px; background: #000; transform: scaleX(-1); }
-        
         label { display: block; text-align: left; font-weight: bold; margin-top: 10px; color: #555; }
         select { width: 100%; padding: 12px; margin-top: 5px; border: 1px solid #ccc; border-radius: 5px; font-size: 16px; background: #fff; }
-        
         button { width: 100%; padding: 14px; background: #00695c; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; font-size: 16px; margin-top: 15px; }
         button:hover { background: #004d40; }
         button:disabled { background: #ccc; cursor: not-allowed; }
-        
         button.back { background: #6c757d; margin-bottom: 20px; width: 100%; max-width: 500px; }
         button.dl { background: #ffab00; color: black; margin-top: 20px; }
-        
         #log { margin-top: 15px; color: green; font-weight: bold; min-height: 20px; }
         .badge-count { background: #e0f2f1; color: #00695c; padding: 5px 10px; border-radius: 15px; font-size: 12px; font-weight: bold; float: right; }
-        
-        /* Area Status Error */
-        #dbStatus { color: red; font-size: 12px; margin-top: 5px; font-weight: bold; display:none; background: #ffebee; padding: 10px; border-radius: 4px; text-align: left; border: 1px solid #ffcdd2;}
-        
-        .running-footer {
-            position: fixed; bottom: 0; left: 0; width: 100%;
-            background: #004d40; color: #fff;
-            padding: 10px 0; font-size: 14px; font-weight: bold;
-            z-index: 1000; box-shadow: 0 -2px 10px rgba(0,0,0,0.2);
-        }
+        .running-footer { position: fixed; bottom: 0; left: 0; width: 100%; background: #004d40; color: #fff; padding: 10px 0; font-size: 14px; font-weight: bold; z-index: 1000; }
     </style>
 </head>
 <body>
@@ -47,22 +32,16 @@
         <h2>🎥 Rekam Wajah Siswa</h2>
         <div id="loading_ai">⏳ Memuat AI...</div>
 
-        <!-- AREA DETEKSI ERROR -->
-        <div id="dbStatus"></div>
-
-        <!-- PILIHAN KELAS -->
         <label>1. Pilih Kelas:</label>
         <select id="pilihKelas" onchange="loadSiswa()">
             <option value="">-- Menunggu Database... --</option>
         </select>
 
-        <!-- PILIHAN SISWA -->
         <label>2. Pilih Nama Siswa:</label>
         <select id="pilihSiswa" disabled>
             <option value="">-- Pilih Kelas Dulu --</option>
         </select>
 
-        <!-- VIDEO AREA -->
         <div style="margin-top: 15px; position: relative;">
             <video id="video" autoplay muted></video>
         </div>
@@ -80,7 +59,6 @@
         <button onclick="downloadJSON()" class="dl" id="btnDownload" disabled>💾 DOWNLOAD JSON KELAS</button>
     </div>
 
-    <!-- FOOTER -->
     <div class="running-footer">
         <marquee direction="left" scrollamount="6">
             &copy; Layanan Digital By Halil Budiyanto, S.Kom.I
@@ -88,7 +66,7 @@
     </div>
 
     <script>
-        // --- 1. CONFIG FIREBASE (WAJIB DIGANTI) ---
+        // --- 1. CONFIG FIREBASE ---
   const firebaseConfig = {
       apiKey: "AIzaSyBWNPcSAzQ_DC5bgXMfC6A3e2QkNMBmimw",
       authDomain: "sapamanusa.firebaseapp.com",
@@ -106,7 +84,6 @@
         let descriptors = [];
 
         window.onload = async () => {
-            // Cek Login Admin
             try { if(sessionStorage.getItem('isAdmin') !== 'true') window.location.href="./index.html"; } catch(e){}
 
             // Load AI
@@ -121,138 +98,87 @@
                 startVideo();
             } catch (err) { alert("Gagal Load AI: " + err); }
 
-            // Login Anonim & Load Kelas
+            // Login Database & Load Kelas
             try {
                 await auth.signInAnonymously();
                 loadDaftarKelas();
-            } catch(e) { 
-                showError("Gagal Login Database: " + e.message);
-            }
+            } catch(e) { alert("DB Error: " + e.message); }
         };
 
-        function showError(msg) {
-            const el = document.getElementById('dbStatus');
-            el.innerHTML = msg;
-            el.style.display = 'block';
-        }
-
-        // --- FUNGSI LOAD KELAS (Dari master_siswa) ---
+        // --- LOAD KELAS (DARI COLLECTION master_siswa) ---
         async function loadDaftarKelas() {
             const selKelas = document.getElementById('pilihKelas');
             selKelas.innerHTML = "<option>Sedang memuat data...</option>";
             
             try {
-                // 1. Ambil data dari master_siswa untuk mengisi dropdown
-                const snap = await db.collection('master_siswa').limit(200).get();
+                // Ambil semua dokumen di 'master_siswa'
+                const snap = await db.collection('master_siswa').get();
                 
                 if (snap.empty) {
-                    showError("⚠ Koleksi 'master_siswa' KOSONG. Cek Firebase Console.");
                     selKelas.innerHTML = "<option value=''>Data Kosong</option>";
                     return;
                 }
 
-                let kelasUnik = new Set();
+                let kelasList = [];
                 snap.forEach(doc => {
-                    const data = doc.data();
-                    // Cek berbagai kemungkinan nama field
-                    if(data.kelas) kelasUnik.add(data.kelas);
-                    else if(data.nama_kelas) kelasUnik.add(data.nama_kelas);
-                    else if(data.rombel) kelasUnik.add(data.rombel);
-                    else kelasUnik.add(doc.id); // Jika nama kelas adalah ID dokumen
+                    // ID Dokumen adalah Nama Kelas (misal: X TE A)
+                    kelasList.push(doc.id); 
                 });
 
                 selKelas.innerHTML = '<option value="">-- Pilih Kelas --</option>';
-                const sorted = Array.from(kelasUnik).sort();
-                
-                sorted.forEach(k => {
+                kelasList.sort().forEach(k => {
                     let opt = document.createElement('option');
                     opt.value = k; opt.text = k;
                     selKelas.add(opt);
                 });
-                document.getElementById('dbStatus').style.display = 'none';
 
             } catch(e) { 
-                showError("⛔ Error Database: " + e.message);
+                alert("Error DB: " + e.message);
                 selKelas.innerHTML = "<option>Gagal Koneksi</option>";
             }
         }
 
-        // --- FUNGSI LOAD SISWA (LOGIKA DINAMIS: FIELD = KELAS) ---
+        // --- LOAD SISWA (DARI DOC master_siswa/NAMAKELAS) ---
         async function loadSiswa() {
-            const kelasDipilih = document.getElementById('pilihKelas').value.trim();
+            const kelas = document.getElementById('pilihKelas').value;
             const selSiswa = document.getElementById('pilihSiswa');
-            const btnRekam = document.getElementById('btnRekam');
-            const btnDL = document.getElementById('btnDownload');
-
+            
             selSiswa.innerHTML = "<option>Memuat Siswa...</option>";
             selSiswa.disabled = true;
-            btnRekam.disabled = true;
+            document.getElementById('btnRekam').disabled = true;
             descriptors = [];
             document.getElementById('count').innerText = "0 Siswa";
-            btnDL.disabled = true;
-            document.getElementById('dbStatus').style.display = 'none';
 
-            if(!kelasDipilih) return;
+            if(!kelas) return;
 
             try {
-                // Ambil 50 dokumen pertama dari list_siswa
-                const snap = await db.collection('list_siswa').limit(50).get();
+                // Ambil dokumen spesifik berdasarkan Nama Kelas
+                const docRef = db.collection('master_siswa').doc(kelas);
+                const docSnap = await docRef.get();
                 
-                if (snap.empty) {
-                    showError("Koleksi 'list_siswa' kosong.");
-                    selSiswa.innerHTML = '<option>Database Kosong</option>';
+                if (!docSnap.exists) {
+                    alert("Kelas tidak ditemukan!");
                     return;
                 }
 
-                let siswaFound = [];
-                let fieldNamesFound = []; // Untuk debug
+                // Ambil field 'list_siswa' (Array of String)
+                const data = docSnap.data();
+                const listSiswa = data.list_siswa || []; // Array ["ADI", "BUDI"]
 
-                snap.forEach(doc => {
-                    const data = doc.data();
-                    
-                    // --- LOGIKA UTAMA ---
-                    // Cari Field yang namanya SAMA PERSIS dengan kelasDipilih
-                    // Contoh: Jika pilih "X E 1", cari field data["X E 1"]
-                    
-                    if (data[kelasDipilih]) {
-                        // Jika isinya Array (List nama)
-                        if (Array.isArray(data[kelasDipilih])) {
-                            siswaFound.push(...data[kelasDipilih]);
-                        } 
-                        // Jika isinya String (Satu nama)
-                        else if (typeof data[kelasDipilih] === 'string') {
-                            siswaFound.push(data[kelasDipilih]);
-                        }
-                    } else {
-                        // Simpan field yang ada untuk diagnosis error
-                        Object.keys(data).forEach(k => fieldNamesFound.push(k));
-                    }
-                });
-
-                if (siswaFound.length === 0) {
-                    // Tampilkan pesan error informatif
-                    const sampleKeys = fieldNamesFound.slice(0, 5).join(", ");
-                    showError(`
-                        ⚠ Data tidak ditemukan untuk kelas <b>'${kelasDipilih}'</b>.<br>
-                        Sistem mencari Field bernama: "${kelasDipilih}"<br>
-                        Tetapi Field yang tersedia di database contohnya: "${sampleKeys}..."<br>
-                        Pastikan ejaan Nama Kelas di 'master_siswa' sama persis dengan Nama Field di 'list_siswa'.
-                    `);
-                    selSiswa.innerHTML = '<option>Siswa Tidak Ditemukan</option>';
+                if(listSiswa.length === 0) {
+                    selSiswa.innerHTML = '<option>Siswa Kosong</option>';
                     return;
                 }
 
-                // Sukses
                 selSiswa.innerHTML = '<option value="">-- Pilih Nama Siswa --</option>';
-                let uniqueSiswa = [...new Set(siswaFound)].sort();
-
-                uniqueSiswa.forEach((nama, index) => {
-                    if(nama && typeof nama === 'string') {
-                        let opt = document.createElement('option');
-                        opt.value = nama; 
-                        opt.text = `${index + 1}. ${nama}`; // Tambah Nomor Urut
-                        selSiswa.add(opt);
-                    }
+                
+                // Urutkan & Tampilkan
+                listSiswa.sort();
+                listSiswa.forEach((nama, index) => {
+                    let opt = document.createElement('option');
+                    opt.value = nama; 
+                    opt.text = `${index + 1}. ${nama}`; 
+                    selSiswa.add(opt);
                 });
 
                 selSiswa.disabled = false;
@@ -261,7 +187,7 @@
                 };
 
             } catch(e) { 
-                showError("Error Load Siswa: " + e.message);
+                alert("Error Load Siswa: " + e.message);
             }
         }
 
@@ -280,12 +206,10 @@
             const log = document.getElementById('log');
             log.innerText = "Mendeteksi wajah..."; log.style.color = "orange";
 
-            // Gunakan SSD MobileNet untuk akurasi tinggi saat training
             const det = await faceapi.detectSingleFace(video, new faceapi.SsdMobilenetv1Options()).withFaceLandmarks().withFaceDescriptor();
 
             if (det) {
                 const existingIndex = descriptors.findIndex(d => d.label === nama);
-                
                 if(existingIndex !== -1) {
                     descriptors[existingIndex] = { label: nama, descriptors: [Array.from(det.descriptor)] };
                     log.innerText = `✅ Data ${nama} diperbarui!`;
@@ -293,26 +217,20 @@
                     descriptors.push({ label: nama, descriptors: [Array.from(det.descriptor)] });
                     log.innerText = `✅ Berhasil merekam: ${nama}`;
                 }
-                
                 log.style.color = "green";
                 document.getElementById('count').innerText = descriptors.length + " Siswa";
                 document.getElementById('btnDownload').disabled = false;
-                
-                // Reset (Agar bisa pilih siswa lain)
-                document.getElementById('pilihSiswa').value = "";
+                document.getElementById('pilihSiswa').value = ""; 
                 document.getElementById('btnRekam').disabled = true;
-
             } else {
-                log.innerText = "❌ Wajah tidak terdeteksi. Pastikan pencahayaan cukup."; log.style.color = "red";
+                log.innerText = "❌ Wajah tidak terdeteksi."; log.style.color = "red";
             }
         }
 
         function downloadJSON() {
             if(descriptors.length === 0) return alert("Belum ada data!");
             const kelas = document.getElementById('pilihKelas').value;
-            // Format Nama File (Ganti Spasi -> Strip)
             const namaFile = kelas.replace(/\s+/g, '-') + ".json";
-
             const a = document.createElement('a');
             a.href = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(descriptors));
             a.download = namaFile;

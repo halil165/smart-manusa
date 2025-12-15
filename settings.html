@@ -12,30 +12,13 @@
         .card { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); margin-bottom: 20px; }
         label { font-weight: bold; display: block; margin-top: 10px; font-size: 14px; color: #555; }
         select, input { width: 100%; padding: 10px; margin-top: 5px; border: 1px solid #ddd; border-radius: 5px; box-sizing: border-box; }
-        
         button { width: 100%; padding: 12px; background: #00695c; color: white; border: none; border-radius: 5px; margin-top: 15px; cursor: pointer; font-weight: bold; }
-        button:hover { background: #004d40; }
-        
-        .btn-check { background: #ff9800; color: black; margin-top: 5px; }
-        
         button.back { background: #6c757d; width: auto; margin-bottom: 10px;}
         table { width: 100%; border-collapse: collapse; margin-top: 15px; }
         th, td { padding: 10px; border-bottom: 1px solid #eee; text-align: left; }
         th { background: #e0f2f1; color: #00695c;}
         .badge { background: #ffab00; color: #000; padding: 2px 8px; border-radius: 10px; font-size: 12px; font-weight: bold; }
-        
-        #debugLog { 
-            background: #212121; color: #00e676; 
-            padding: 15px; margin-top: 10px; 
-            border-radius: 5px; font-family: monospace; font-size: 12px;
-            display: none; line-height: 1.5;
-        }
-        .running-footer {
-            position: fixed; bottom: 0; left: 0; width: 100%;
-            background: #004d40; color: #fff;
-            padding: 10px 0; font-size: 14px; font-weight: bold;
-            z-index: 1000; box-shadow: 0 -2px 10px rgba(0,0,0,0.2);
-        }
+        .running-footer { position: fixed; bottom: 0; left: 0; width: 100%; background: #004d40; color: #fff; padding: 10px 0; font-size: 14px; font-weight: bold; z-index: 1000; }
     </style>
 </head>
 <body>
@@ -43,33 +26,10 @@
     <div id="authStatus" style="float:right; font-size:12px; font-weight:bold; color:#666;">Auth...</div>
     <h2>⚙️ Atur Kode Akses</h2>
 
-    <!-- AREA DIAGNOSIS DATABASE -->
-    <div class="card" style="border-left: 5px solid #ff9800;">
-        <h3>🛠 Sumber Data Kelas</h3>
-        <p style="font-size: 12px; color: #666;">Mengambil daftar kelas dari Master Data.</p>
-        
-        <div style="display: flex; gap: 10px;">
-            <div style="flex: 1;">
-                <label>Nama Collection:</label>
-                <!-- Default diubah ke master_siswa -->
-                <input type="text" id="inputColl" value="master_siswa" placeholder="cth: master_siswa">
-            </div>
-            <div style="flex: 1;">
-                <label>Nama Field Kelas:</label>
-                <!-- Default field pencarian -->
-                <input type="text" id="inputField" value="kelas" placeholder="cth: kelas">
-            </div>
-        </div>
-        <button class="btn-check" onclick="loadDaftarKelas()">🔄 MUAT DATA KELAS</button>
-        
-        <div id="debugLog"></div>
-    </div>
-
-    <!-- AREA INPUT UTAMA -->
     <div class="card">
         <h3>1. Buat Kode Baru</h3>
-        <label>Pilih Kelas:</label>
-        <select id="pilihKelas"><option value="">-- Klik Tombol Oranye di Atas --</option></select>
+        <label>Pilih Kelas (Dari Master Data):</label>
+        <select id="pilihKelas"><option value="">-- Menunggu Database... --</option></select>
 
         <label>Set Kode Akses Unik:</label>
         <input type="text" id="inputKode" placeholder="Contoh: XIPA1" onkeyup="this.value = this.value.toUpperCase()">
@@ -88,7 +48,7 @@
     </div>
 
     <script>
-        // --- CONFIG FIREBASE (PASTIKAN SUDAH BENAR) ---
+        // --- CONFIG FIREBASE ---
   const firebaseConfig = {
       apiKey: "AIzaSyBWNPcSAzQ_DC5bgXMfC6A3e2QkNMBmimw",
       authDomain: "sapamanusa.firebaseapp.com",
@@ -107,70 +67,50 @@
         window.onload = async () => {
             try { if(sessionStorage.getItem('isAdmin') !== 'true') window.location.href="./index.html"; } catch(e){}
             
-            // Login Anonim Otomatis
             auth.onAuthStateChanged(user => {
                 const st = document.getElementById('authStatus');
                 if(user) {
-                    st.innerText = "✅ Database Connected"; st.style.color = "green";
+                    st.innerText = "✅ Connected"; st.style.color = "green";
+                    loadDaftarKelas();
                     setupRealtimeListener();
                 } else {
                     st.innerText = "🔄 Connecting...";
-                    auth.signInAnonymously().catch(e => alert(e.message));
+                    auth.signInAnonymously().catch(e => alert("Auth Error: " + e.message));
                 }
             });
         };
 
-        // --- FUNGSI LOAD KELAS DARI MASTER_SISWA ---
+        // --- LOAD KELAS (DARI COLLECTION 'master_siswa') ---
         async function loadDaftarKelas() {
             const select = document.getElementById('pilihKelas');
-            const debugLog = document.getElementById('debugLog');
-            
-            let collName = document.getElementById('inputColl').value.trim();
-            let fieldName = document.getElementById('inputField').value.trim();
-
-            debugLog.style.display = 'block';
-            debugLog.innerHTML = `⏳ Membaca collection: <b>'${collName}'</b>...`;
-            debugLog.style.color = "#fff";
             select.innerHTML = '<option>Sedang memuat...</option>';
 
             try {
-                // Ambil data dari master_siswa
-                const snap = await db.collection(collName).limit(100).get(); 
+                // Ambil semua dokumen di 'master_siswa'
+                // ID Dokumen = Nama Kelas (Sesuai upload_siswa.html Anda)
+                const snap = await db.collection('master_siswa').get(); 
                 
                 if (snap.empty) {
-                    debugLog.innerHTML += `<br>❌ GAGAL: Collection '${collName}' tidak ditemukan atau kosong.`;
                     select.innerHTML = '<option>Data Kosong</option>';
                     return;
                 }
 
-                debugLog.innerHTML += `<br>✅ Ditemukan ${snap.size} data master.`;
-                
-                let kelasUnik = new Set();
-                
-                snap.forEach(doc => { 
-                    const data = doc.data();
-                    // Cek berbagai kemungkinan nama field untuk kelas
-                    let namaKelas = data[fieldName] || data['nama_kelas'] || data['kelas'] || data['id'] || doc.id;
-                    
-                    if (namaKelas) {
-                        kelasUnik.add(namaKelas);
-                    }
+                let kelasList = [];
+                snap.forEach(doc => {
+                    kelasList.push(doc.id); // doc.id adalah Nama Kelas (misal: X TE A)
                 });
 
-                // Urutkan dan Tampilkan
                 select.innerHTML = '<option value="">-- Pilih Kelas --</option>';
-                const sortedKelas = Array.from(kelasUnik).sort();
-                
-                sortedKelas.forEach(k => {
-                    select.innerHTML += `<option value="${k}">${k}</option>`;
+                kelasList.sort().forEach(k => {
+                    let opt = document.createElement('option');
+                    opt.value = k; 
+                    opt.text = k;
+                    select.add(opt);
                 });
-
-                debugLog.innerHTML += `<br>✅ SUKSES LOAD ${sortedKelas.length} KELAS.`;
-                debugLog.style.color = "#00e676";
 
             } catch(e) { 
-                debugLog.style.color = "#ff5252";
-                debugLog.innerHTML += `<br>⛔ ERROR: ${e.message}`;
+                alert("Gagal Load Kelas: " + e.message);
+                select.innerHTML = '<option>Error Koneksi</option>';
             }
         }
 
@@ -183,7 +123,6 @@
                 const cek = await db.collection('akses_kelas').where('kode','==',kode).get();
                 if(!cek.empty) return alert("Kode sudah dipakai!");
 
-                // Simpan mapping Kode -> Nama Kelas
                 await db.collection('akses_kelas').doc(kelas.replace(/\s+/g,'_')).set({
                     nama_kelas: kelas, 
                     kode: kode, 
