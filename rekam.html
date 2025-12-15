@@ -29,7 +29,7 @@
         .badge-count { background: #e0f2f1; color: #00695c; padding: 5px 10px; border-radius: 15px; font-size: 12px; font-weight: bold; float: right; }
         
         /* Area Status Error */
-        #dbStatus { color: red; font-size: 12px; margin-top: 5px; font-weight: bold; display:none; background: #ffebee; padding: 5px; border-radius: 4px; }
+        #dbStatus { color: red; font-size: 12px; margin-top: 5px; font-weight: bold; display:none; background: #ffebee; padding: 10px; border-radius: 4px; text-align: left; border: 1px solid #ffcdd2;}
         
         .running-footer {
             position: fixed; bottom: 0; left: 0; width: 100%;
@@ -105,7 +105,6 @@
         let descriptors = [];
 
         window.onload = async () => {
-            // Cek Login Admin
             try { if(sessionStorage.getItem('isAdmin') !== 'true') window.location.href="./index.html"; } catch(e){}
 
             // Load AI
@@ -131,17 +130,16 @@
 
         function showError(msg) {
             const el = document.getElementById('dbStatus');
-            el.innerText = msg;
+            el.innerHTML = msg;
             el.style.display = 'block';
         }
 
-        // --- FUNGSI LOAD KELAS (Dari master_siswa) ---
+        // --- FUNGSI LOAD KELAS ---
         async function loadDaftarKelas() {
             const selKelas = document.getElementById('pilihKelas');
             selKelas.innerHTML = "<option>Sedang memuat data...</option>";
             
             try {
-                // Ambil semua dokumen di master_siswa
                 const snap = await db.collection('master_siswa').limit(200).get();
                 
                 if (snap.empty) {
@@ -151,30 +149,14 @@
                 }
 
                 let kelasUnik = new Set();
-                let fieldFound = false;
-
                 snap.forEach(doc => {
                     const data = doc.data();
-                    
-                    // Cek berbagai kemungkinan nama field untuk kelas
-                    if(data.kelas) { kelasUnik.add(data.kelas); fieldFound = true; }
-                    else if(data.nama_kelas) { kelasUnik.add(data.nama_kelas); fieldFound = true; }
-                    else if(data.rombel) { kelasUnik.add(data.rombel); fieldFound = true; }
-                    else {
-                        // Jika tidak ada field khusus, gunakan ID Dokumen sebagai Nama Kelas
-                        // Contoh: dokumen bernama "X E 1"
-                        kelasUnik.add(doc.id); 
-                        fieldFound = true;
-                    }
+                    if(data.kelas) kelasUnik.add(data.kelas);
+                    else if(data.nama_kelas) kelasUnik.add(data.nama_kelas);
+                    else if(data.rombel) kelasUnik.add(data.rombel);
+                    else kelasUnik.add(doc.id); // Fallback pakai ID
                 });
 
-                if(!fieldFound) {
-                    showError("⚠ Format data kelas tidak dikenali.");
-                    selKelas.innerHTML = "<option value=''>Format Salah</option>";
-                    return;
-                }
-
-                // Masukkan ke Dropdown
                 selKelas.innerHTML = '<option value="">-- Pilih Kelas --</option>';
                 const sorted = Array.from(kelasUnik).sort();
                 
@@ -191,9 +173,9 @@
             }
         }
 
-        // --- FUNGSI LOAD SISWA (Tanpa NIS, Dari list_siswa) ---
+        // --- FUNGSI LOAD SISWA (Updated Logic) ---
         async function loadSiswa() {
-            const kelas = document.getElementById('pilihKelas').value;
+            const kelas = document.getElementById('pilihKelas').value.trim(); // Trim spasi
             const selSiswa = document.getElementById('pilihSiswa');
             const btnRekam = document.getElementById('btnRekam');
             const btnDL = document.getElementById('btnDownload');
@@ -205,11 +187,15 @@
             descriptors = [];
             document.getElementById('count').innerText = "0 Siswa";
             btnDL.disabled = true;
+            document.getElementById('dbStatus').style.display = 'none';
 
             if(!kelas) return;
 
             try {
-                // Filter berdasarkan kelas
+                // Diagnosa: Tampilkan apa yang sedang dicari
+                console.log(`Mencari siswa di 'list_siswa' dengan kelas '${kelas}'`);
+
+                // Ambil dari 'list_siswa'
                 const snap = await db.collection('list_siswa')
                                      .where('kelas', '==', kelas)
                                      .get();
@@ -217,19 +203,32 @@
                 selSiswa.innerHTML = '<option value="">-- Pilih Nama Siswa --</option>';
                 
                 if(snap.empty) {
-                    showError(`Tidak ada siswa di kelas ${kelas}.`);
+                    showError(`⚠ <b>KOSONG:</b> Tidak ditemukan siswa dengan kelas <b>'${kelas}'</b>.<br>Tips: Cek apakah nama kelas di database 'list_siswa' sama persis (spasi/huruf besar)?`);
                     selSiswa.innerHTML = '<option>Siswa Kosong</option>';
                     return;
                 }
 
                 let siswaList = [];
+                let sampleData = null; // Untuk debug
+
                 snap.forEach(doc => {
                     const d = doc.data();
-                    // Ambil field 'nama' atau 'nama_lengkap' atau 'nama_siswa'
-                    const namaSiswa = d.nama || d.nama_lengkap || d.nama_siswa || "Tanpa Nama";
-                    siswaList.push(namaSiswa);
+                    if(!sampleData) sampleData = d; // Ambil 1 contoh
+
+                    // Coba semua kemungkinan nama field
+                    const namaSiswa = d.nama || d.nama_lengkap || d.nama_siswa || d.name;
+                    
+                    if(namaSiswa) {
+                        siswaList.push(namaSiswa);
+                    }
                 });
                 
+                // Jika data ada tapi nama null semua
+                if(siswaList.length === 0) {
+                    showError(`⚠ Data ada (${snap.size} doc), tapi kolom Nama tidak ditemukan.<br>Contoh data yang diambil: ${JSON.stringify(sampleData)}`);
+                    return;
+                }
+
                 // Urutkan Nama A-Z
                 siswaList.sort();
 
@@ -242,11 +241,9 @@
 
                 selSiswa.disabled = false;
                 selSiswa.onchange = () => { btnRekam.disabled = (selSiswa.value === ""); };
-                document.getElementById('dbStatus').style.display = 'none';
 
             } catch(e) { 
                 showError("Gagal ambil siswa: " + e.message);
-                // Jika error index, beritahu cara fix-nya
                 if(e.message.includes("index")) alert("⚠️ ERROR INDEX: Buka link di Console (F12) untuk membuat index Firebase.");
             }
         }
@@ -266,11 +263,10 @@
             const log = document.getElementById('log');
             log.innerText = "Mendeteksi wajah..."; log.style.color = "orange";
 
-            // Deteksi Wajah
-            const det = await faceapi.detectSingleFace(video, new faceapi.SsdMobilenetv1Options()).withFaceLandmarks().withFaceDescriptor();
+            // Gunakan TinyFaceDetector agar lebih cepat di HP
+            const det = await faceapi.detectSingleFace(video, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks().withFaceDescriptor();
 
             if (det) {
-                // Simpan data wajah (Label = Nama Langsung)
                 const existingIndex = descriptors.findIndex(d => d.label === nama);
                 
                 if(existingIndex !== -1) {
@@ -285,12 +281,12 @@
                 document.getElementById('count').innerText = descriptors.length + " Siswa";
                 document.getElementById('btnDownload').disabled = false;
                 
-                // Reset (Agar bisa pilih siswa lain)
+                // Reset Pilihan
                 document.getElementById('pilihSiswa').value = "";
                 document.getElementById('btnRekam').disabled = true;
 
             } else {
-                log.innerText = "❌ Wajah tidak terdeteksi."; log.style.color = "red";
+                log.innerText = "❌ Wajah tidak terdeteksi. Dekatkan wajah ke kamera."; log.style.color = "red";
             }
         }
 
@@ -298,7 +294,6 @@
             if(descriptors.length === 0) return alert("Belum ada data!");
             
             const kelas = document.getElementById('pilihKelas').value;
-            // Format Nama File: X-E-1.json (Ganti spasi dengan strip)
             const namaFile = kelas.replace(/\s+/g, '-') + ".json";
 
             const a = document.createElement('a');
